@@ -10,11 +10,11 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-if(MSVC)
-    add_compile_options(/W4)
-else()
-    add_compile_options(-Wall -Wextra -Wpedantic -Wshadow)
-endif()
+# Ensure RelWithDebInfo or Debug build types carry frame pointers globally
+add_compile_options(
+        $<$<COMPILE_LANGUAGE:CXX>:-fno-omit-frame-pointer>
+        $<$<COMPILE_LANGUAGE:CXX>:-mno-omit-leaf-frame-pointer>
+)
 
 include_directories(include)
 
@@ -44,3 +44,29 @@ target_link_libraries(unit_tests PRIVATE gtest_main)
 
 include(GoogleTest)
 gtest_discover_tests(unit_tests)
+
+# -----------------------------------------------------------------------------
+# 3. Target B: Profiling Target (Standalone main)
+# -----------------------------------------------------------------------------
+add_executable(profile_shallow_tree
+        src/profile_main.cpp
+)
+
+target_include_directories(profile_shallow_tree PRIVATE include)
+
+if(NOT MSVC)
+    target_compile_options(profile_shallow_tree PRIVATE
+            -O2                         # Optimization enabled
+            -g3                         # Full macro & line debug info
+            -fno-omit-frame-pointer     # Keep frame pointers
+            -mno-omit-leaf-frame-pointer
+            -fno-optimize-sibling-calls # Prevents tail-call elimination
+            -fno-inline                 # Stops inlining of functions explicitly marked inline
+            -fno-inline-functions       # Prevents compiler from auto-inlining functions under -O2
+            -fno-default-inline         # Prevents inline member functions inside classes from inlining
+    )
+
+    target_link_options(profile_shallow_tree PRIVATE
+            -rdynamic                   # Export dynamic symbols for perf/DTrace
+    )
+endif()

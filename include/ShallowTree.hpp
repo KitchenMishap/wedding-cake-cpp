@@ -52,6 +52,54 @@ struct Node {
 };
 
 // -----------------------------------------------------------------------------
+// Partition Helper Functions
+// -----------------------------------------------------------------------------
+
+// Strategy A: Standard Sort O(N log N)
+std::array<size_t, 256> sort_partition_by_byte(
+    std::span<HashPresentation> input,
+    size_t byte_index)
+{
+    std::ranges::sort(input, {}, [byte_index](const HashPresentation& hp) {
+        return hp.hash_bytes[byte_index];
+    });
+
+    std::array<size_t, 256> counts{};
+    for (const auto& item : input) {
+        counts[item.hash_bytes[byte_index]]++;
+    }
+    return counts;
+}
+
+// Strategy B: Linear Bucket Partition O(N)
+std::array<size_t, 256> bucket_partition_by_byte(
+    std::span<HashPresentation> input,
+    size_t byte_index,
+    std::vector<HashPresentation>& scratch_buffer)
+{
+    std::array<size_t, 256> counts{};
+    for (const auto& item : input) {
+        counts[item.hash_bytes[byte_index]]++;
+    }
+
+    std::array<size_t, 256> offsets{};
+    offsets[0] = 0;
+    for (size_t i = 1; i < 256; ++i) {
+        offsets[i] = offsets[i - 1] + counts[i - 1];
+    }
+
+    std::array<size_t, 256> running_offsets = offsets;
+    for (const auto& item : input) {
+        uint8_t byte_val = item.hash_bytes[byte_index];
+        scratch_buffer[running_offsets[byte_val]++] = item;
+    }
+
+    std::copy_n(scratch_buffer.begin(), input.size(), input.begin());
+
+    return counts;
+}
+
+// -----------------------------------------------------------------------------
 // ShallowTree Engine Class
 // -----------------------------------------------------------------------------
 class ShallowTree {
@@ -98,7 +146,10 @@ public:
             return;
         }
 
-        root_slot_.next_node = recurse_generate_node(input, unused_mask, handled_bytes);
+        // Single buffer allocation reused throughout recursive steps
+        std::vector<HashPresentation> scratch_buffer(input.size());
+
+        root_slot_.next_node = recurse_generate_node(input, unused_mask, handled_bytes, scratch_buffer);
     }
 
     // Fast O(1) Shallow-Trie Lookup
@@ -235,7 +286,8 @@ private:
     std::unique_ptr<Node> recurse_generate_node(
           std::span<HashPresentation> input,
           uint64_t unused_mask,
-          size_t level_depth)
+          size_t level_depth,
+          std::vector<HashPresentation>& scratch_buffer)
     {
         if (input.size() < 2) {
             throw std::logic_error("recurse_generate_node called with fewer than 2 elements");
@@ -247,7 +299,7 @@ private:
         }
 
         // 1. Find the byte index with maximum Shannon Entropy
-        double max_entropy = -1.0;
+        double max_entropy = std::numeric_limits<double>::lowest(); // Safe for positive or negative metrics
         size_t best_byte_index = 0;
 
         for (size_t b = 0; b < total_hash_bytes_; ++b) {
@@ -264,34 +316,36 @@ private:
         unused_mask &= ~(1ULL << best_byte_index);
 
         // 2. In-place sort / partition
-        std::ranges::stable_sort(input, {}, [best_byte_index](const HashPresentation& hp) {
-            return hp.hash_bytes[best_byte_index];
-        });
+        std::array<size_t, 256> counts{};
+
+        // Previous slower way
+        //counts = sort_partition_by_byte(input, best_byte_index);
+
+        // Newer faster way (twice as fast it seems)
+        counts = bucket_partition_by_byte(input, best_byte_index, scratch_buffer);
 
         auto node = std::make_unique<Node>();
         node->level_byte_depth = level_depth;
         node->slots = std::make_unique<SlotsNode>();
         node->slots->hash_byte_index = best_byte_index;
 
-        // 3. Partition across 256 sub-slots
-        size_t index = 0;
+        // 3. Partition across 256 sub-slots using bucket count boundaries
+        size_t start_index = 0;
         for (uint16_t byte_val = 0; byte_val < 256; ++byte_val) {
-            size_t start_index = index;
-
-            while (index < input.size() && input[index].hash_bytes[best_byte_index] == byte_val) {
-                index++;
-            }
-
-            size_t count = index - start_index;
+            size_t count = counts[byte_val];
 
             if (count == 1) {
                 // Leaf Node
-                node->slots->slots[byte_val].next_node = make_leaf_node(input[start_index], unused_mask, level_depth + 1);
+                node->slots->slots[byte_val].next_node =
+                    make_leaf_node(input[start_index], unused_mask, level_depth + 1);
             } else if (count > 1) {
                 // Subtree Node
                 auto sub_span = input.subspan(start_index, count);
-                node->slots->slots[byte_val].next_node = recurse_generate_node(sub_span, unused_mask, level_depth + 1);
+                node->slots->slots[byte_val].next_node =
+                    recurse_generate_node(sub_span, unused_mask, level_depth + 1, scratch_buffer);
             }
+
+            start_index += count;
         }
 
         return node;
@@ -307,14 +361,26 @@ private:
         double total = static_cast<double>(input.size());
         double entropy = 0.0;
 
+//      Old slow way (actual entropy)
+//      for (size_t count : counts) {
+//          if (count > 0) {
+//              double prob = static_cast<double>(count) / total;
+//              entropy -= prob * std::log2(prob);
+//          }
+//      }
+//      return entropy;
+
+        // New fast way avoiding logs
+        // Maximizing Shannon Entropy -sum(p log p) is equivalent to
+        // minimizing collision probability sum(count^2)
+        uint64_t sum_sq = 0;
         for (size_t count : counts) {
-            if (count > 0) {
-                double prob = static_cast<double>(count) / total;
-                entropy -= prob * std::log2(prob);
-            }
+            sum_sq += (count) * count;
         }
 
-        return entropy;
+        // Lower sum of squares = higher entropy
+        return -static_cast<double>(sum_sq);
+
     }
 };
 
