@@ -52,7 +52,7 @@ TEST(ShallowTreeTest, TestEmptyTree) {
             auto search_hash_bytes = gen.make_random_hash(hash_bytes);
             HashView search_hash(search_hash_bytes);
 
-            EXPECT_EQ(st.lookup_hash(search_hash), LOCAL_PI_NO_MATCH)
+            EXPECT_EQ(st.lookup_hash_unique_reassured_candidate(search_hash), LOCAL_PI_NO_MATCH)
                 << "Lookup should return NO_MATCH for an empty tree (Hash size: " << hash_bytes << "B)";
         }
     }
@@ -68,7 +68,7 @@ TEST(ShallowTreeTest, TestSingleHashPresent) {
             std::vector<HashPresentation> entries = { {hash, LocalPi(0)} };
             ShallowTree st(entries, ls_tail_bits, hash_bytes, REASSURANCE_BYTES_COUNT);
 
-            EXPECT_EQ(st.lookup_hash(HashView(hash)), LocalPi(0))
+            EXPECT_EQ(st.lookup_hash_unique_reassured_candidate(HashView(hash)), LocalPi(0))
                 << "Expected presentation index 0 for present hash";
         }
     }
@@ -85,14 +85,14 @@ TEST(ShallowTreeTest, TestSingleHashAbsent) {
             ShallowTree st(entries, ls_tail_bits, hash_bytes, REASSURANCE_BYTES_COUNT);
 
             auto missing_hash = gen.make_random_hash(hash_bytes);
-            EXPECT_EQ(st.lookup_hash(HashView(missing_hash)), LOCAL_PI_NO_MATCH)
+            EXPECT_EQ(st.lookup_hash_unique_reassured_candidate(HashView(missing_hash)), LOCAL_PI_NO_MATCH)
                 << "Expected NO_MATCH for absent hash";
         }
     }
 }
 
 TEST(ShallowTreeTest, Test65535Hashes) {
-    const size_t count = 65535;
+    const size_t count = 16 * 65535;
     const size_t ls_tail_bits = 8; // 1 byte already handled by LsTailIndex
 
     DeterministicHashGenerator gen;
@@ -113,7 +113,7 @@ TEST(ShallowTreeTest, Test65535Hashes) {
         // Verify all 65,535 inserted hashes match their presentation indices
         for (size_t i = 0; i < count; ++i) {
             const auto& expected_item = presentation_array[i];
-            LocalPi local_pi = st.lookup_hash(expected_item.view());
+            LocalPi local_pi = st.lookup_hash_unique_reassured_candidate(expected_item.view());
             uint64_t found_index = local_pi.to_int();
 
             ASSERT_NE(local_pi, LOCAL_PI_NO_MATCH)
@@ -125,7 +125,7 @@ TEST(ShallowTreeTest, Test65535Hashes) {
 
         // Verify random non-existent hash returns NO_MATCH
         auto absent_hash = gen.make_random_hash(hash_bytes);
-        EXPECT_EQ(st.lookup_hash(HashView(absent_hash)), LOCAL_PI_NO_MATCH);
+        EXPECT_EQ(st.lookup_hash_unique_reassured_candidate(HashView(absent_hash)), LOCAL_PI_NO_MATCH);
     }
 }
 

@@ -23,7 +23,6 @@ struct Node;
 struct LeafNode {
     std::vector<uint8_t> reassurance_hash_bytes;
     LocalPi presentation_index{LOCAL_PI_NO_MATCH};
-    std::vector<uint8_t> full_hash;
 };
 
 struct Slot {
@@ -84,26 +83,43 @@ public:
             return; // Empty tree: root_slot_ remains empty
         }
 
+        // Bitmask tracking available bytes (bit b = 1 means unused)
+        // Up to 64 bytes fit naturally in uint64_t
+        uint64_t unused_mask = (total_hash_bytes_ == 64) ? ~0ULL : ((1ULL << total_hash_bytes_) - 1);
+
+        // Clear bits for handled LSB tail bytes
+        for (size_t b = 0; b < handled_bytes; ++b) {
+            unused_mask &= ~(1ULL << b);
+        }
+
         // Single hash edge-case
         if (input.size() == 1) {
-            root_slot_.next_node = make_leaf_node(input[0], handled_bytes);
+            root_slot_.next_node = make_leaf_node(input[0], unused_mask, handled_bytes);
             return;
         }
 
-        // Bitset/Vector tracking which byte indices are available for partitioning
-        std::vector<bool> unused_bytes(total_hash_bytes_, true);
-        // Exclude the LSB tail bytes already handled by lower radix levels
-        for (size_t b = 0; b < handled_bytes; ++b) {
-            unused_bytes[b] = false;
-        }
-
-        root_slot_.next_node = recurse_generate_node(input, unused_bytes, handled_bytes);
+        root_slot_.next_node = recurse_generate_node(input, unused_mask, handled_bytes);
     }
 
     // Fast O(1) Shallow-Trie Lookup
-    [[nodiscard]] LocalPi lookup_hash(HashView target_hash) const {
+    // Result is only a candidate as not all bytes of hash are examined. False positives are possible.
+    // The result is however unique within the tree.
+    // The result is "reassured" by a few spare bytes of checking.
+    [[nodiscard]] LocalPi lookup_hash_unique_reassured_candidate(HashView target_hash) const {
         if (target_hash.size() != total_hash_bytes_ || root_slot_.is_empty()) {
             return LOCAL_PI_NO_MATCH;
+        }
+
+        // Calculate whole bytes touched/handled by the LS tail bits
+        size_t handled_bytes = (ls_tail_bits_count_ + 7) / 8;
+
+        // Bitmask tracking available bytes (bit b = 1 means unused)
+        // Up to 64 bytes fit naturally in uint64_t
+        uint64_t unused_mask = (total_hash_bytes_ == 64) ? ~0ULL : ((1ULL << total_hash_bytes_) - 1);
+
+        // Clear bits for handled LSB tail bytes
+        for (size_t b = 0; b < handled_bytes; ++b) {
+            unused_mask &= ~(1ULL << b);
         }
 
         const Node* current = root_slot_.next_node.get();
@@ -111,16 +127,30 @@ public:
         while (current != nullptr) {
             if (current->is_leaf()) {
                 const auto& leaf = *current->leaf;
-                if (target_hash.bytes().size() == leaf.full_hash.size() &&
-                    std::equal(leaf.full_hash.begin(), leaf.full_hash.end(), target_hash.bytes().begin())) {
-                    return leaf.presentation_index;
+
+                // We must check the reassurance bytes. These are (in order) the first few bytes not yet examined
+                size_t index = 0;
+                for (size_t byteIndex = 0; byteIndex < total_hash_bytes_; byteIndex++) {
+                    if ((unused_mask & (1ULL << byteIndex)) == 0) {
+                        continue; // Skip used byte
+                    }
+                    if ( target_hash[byteIndex] != leaf.reassurance_hash_bytes[index] ) {
+                        return LOCAL_PI_NO_MATCH;   // Reassurance byte mismatch
+                    }
+                    index++;
+                    if ( index >= reassurance_bytes_count_ ) {
+                        return leaf.presentation_index;     // All reassurance bytes matched
+                    }
                 }
-                return LOCAL_PI_NO_MATCH;
+                // Examined all bytes of hash!
+                return leaf.presentation_index;
             }
 
             // Internal SlotsNode: examine target hash at hash_byte_index
             size_t byte_idx = current->slots->hash_byte_index;
             uint8_t byte_val = target_hash[byte_idx];
+            // Clear bit for consumed byte index
+            unused_mask &= ~(1ULL << byte_idx);
 
             const Slot& slot = current->slots->slots[byte_val];
             if (slot.is_empty()) {
@@ -173,14 +203,27 @@ private:
     Slot root_slot_;
 
     // Creates a single leaf node
-    std::unique_ptr<Node> make_leaf_node(const HashPresentation& hp, size_t level_depth) {
+    std::unique_ptr<Node> make_leaf_node(const HashPresentation& hp, uint64_t unused_mask, size_t level_depth) {
         auto leaf = std::make_unique<LeafNode>();
         leaf->presentation_index = hp.presentation_index;
-        leaf->full_hash = hp.hash_bytes;
 
-        // Reassurance bytes sample remaining bytes
-        size_t bytes_to_copy = std::min(reassurance_bytes_count_, hp.hash_bytes.size());
-        leaf->reassurance_hash_bytes.assign(hp.hash_bytes.begin(), hp.hash_bytes.begin() + bytes_to_copy);
+        // Reassurance bytes are, in order, the bytes that have not yet been examined
+        leaf->reassurance_hash_bytes.resize(reassurance_bytes_count_);
+        size_t index = 0;
+        for (size_t b = 0; b < total_hash_bytes_; ++b) {
+            if ( (unused_mask & (1ULL << b)) == 0 ) {
+                continue;   // Byte b has already been used, can't be used for reassurance
+            }
+            leaf->reassurance_hash_bytes[index] = hp.hash_bytes[b];
+            index++;
+            if ( index >= reassurance_bytes_count_ ) {
+                break;
+            }
+        }
+        // There may be space for more. Zero them out to give deterministic data
+        for ( ;index < reassurance_bytes_count_; ++index) {
+            leaf->reassurance_hash_bytes[index] = 0;
+        }
 
         auto node = std::make_unique<Node>();
         node->level_byte_depth = level_depth;
@@ -189,12 +232,18 @@ private:
     }
 
     // Recursive entropy-based partitioning
-    std::unique_ptr<Node> recurse_generate_node(std::span<HashPresentation> input,
-                                                std::vector<bool> unused_bytes,
-                                                size_t level_depth)
+    std::unique_ptr<Node> recurse_generate_node(
+          std::span<HashPresentation> input,
+          uint64_t unused_mask,
+          size_t level_depth)
     {
         if (input.size() < 2) {
             throw std::logic_error("recurse_generate_node called with fewer than 2 elements");
+        }
+
+        // Safety check: if mask is 0, all bytes are used and we still have >= 2 identical items
+        if (unused_mask == 0) {
+            throw std::runtime_error("Duplicate hashes detected during tree generation!");
         }
 
         // 1. Find the byte index with maximum Shannon Entropy
@@ -202,7 +251,7 @@ private:
         size_t best_byte_index = 0;
 
         for (size_t b = 0; b < total_hash_bytes_; ++b) {
-            if (unused_bytes[b]) {
+            if ((unused_mask & (1ULL << b)) != 0) {
                 double entropy = calculate_byte_entropy(input, b);
                 if (entropy > max_entropy) {
                     max_entropy = entropy;
@@ -211,16 +260,12 @@ private:
             }
         }
 
-        if (max_entropy <= 0.0) {
-            throw std::runtime_error("Duplicate hashes detected during tree generation!");
-        }
-
         // Mark chosen byte as consumed
-        unused_bytes[best_byte_index] = false;
+        unused_mask &= ~(1ULL << best_byte_index);
 
-        // 2. In-place sort input span by the chosen byte value
-        std::stable_sort(input.begin(), input.end(), [best_byte_index](const HashPresentation& a, const HashPresentation& b) {
-            return a.hash_bytes[best_byte_index] < b.hash_bytes[best_byte_index];
+        // 2. In-place sort / partition
+        std::ranges::stable_sort(input, {}, [best_byte_index](const HashPresentation& hp) {
+            return hp.hash_bytes[best_byte_index];
         });
 
         auto node = std::make_unique<Node>();
@@ -241,11 +286,11 @@ private:
 
             if (count == 1) {
                 // Leaf Node
-                node->slots->slots[byte_val].next_node = make_leaf_node(input[start_index], level_depth + 1);
+                node->slots->slots[byte_val].next_node = make_leaf_node(input[start_index], unused_mask, level_depth + 1);
             } else if (count > 1) {
                 // Subtree Node
                 auto sub_span = input.subspan(start_index, count);
-                node->slots->slots[byte_val].next_node = recurse_generate_node(sub_span, unused_bytes, level_depth + 1);
+                node->slots->slots[byte_val].next_node = recurse_generate_node(sub_span, unused_mask, level_depth + 1);
             }
         }
 
