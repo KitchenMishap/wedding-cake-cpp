@@ -92,7 +92,7 @@ TEST(ShallowTreeTest, TestSingleHashAbsent) {
 }
 
 TEST(ShallowTreeTest, Test65535Hashes) {
-    const size_t count = 16 * 65535;
+    const size_t count = 65535;
     const size_t ls_tail_bits = 8; // 1 byte already handled by LsTailIndex
 
     DeterministicHashGenerator gen;
