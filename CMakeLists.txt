@@ -39,6 +39,8 @@ add_executable(unit_tests
     tests/shallow_tree_test.cpp
         include/wedding_cake/types.hpp
         include/wedding_cake/ShallowTree.hpp
+        tests/hashes_order_file_test.cpp
+        tests/prefix_entries_file_test.cpp
 )
 target_link_libraries(unit_tests PRIVATE gtest_main)
 
@@ -51,6 +53,8 @@ gtest_discover_tests(unit_tests)
 add_executable(profile_shallow_tree
         src/profile_main.cpp
         include/wedding_cake/concepts.hpp
+        include/wedding_cake/hashes_order_file.hpp
+        include/wedding_cake/prefix_entries_file.hpp
 )
 
 target_include_directories(profile_shallow_tree PRIVATE include)
