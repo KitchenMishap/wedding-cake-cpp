@@ -1,8 +1,8 @@
 #include <iostream>
 #include <random>
 
-#include "ShallowTree.hpp"
-#include "HashTypes.hpp"
+#include "../include/wedding_cake/ShallowTree.hpp"
+#include "../include/wedding_cake/types.hpp"
 
 // Fixed-seed PRNG for deterministic, reproducible test runs
 class DeterministicHashGenerator {
@@ -20,10 +20,10 @@ public:
 int main() {
     using namespace wedding_cake;
 
-    const size_t count = 64 * 65535;
-    const size_t ls_tail_bits = 8;
-    const size_t REASSURANCE_BYTES_COUNT = 2;
-    const size_t hash_bytes = 32;
+    constexpr size_t count = 64 * 65535;
+    constexpr size_t ls_tail_bits = 8;
+    constexpr size_t REASSURANCE_BYTES_COUNT = 2;
+    constexpr size_t hash_bytes = 32;
 
     std::cout << "Generating test data...\n";
     DeterministicHashGenerator gen;

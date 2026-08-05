@@ -7,10 +7,10 @@
 #include <algorithm>
 #include <limits>
 
-#include "HashTypes.hpp"
+#include "../include/wedding_cake/types.hpp"
 
 // The code we are testing
-#include "ShallowTree.hpp"
+#include "../include/wedding_cake/ShallowTree.hpp"
 
 namespace wedding_cake {
 

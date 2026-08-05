@@ -10,7 +10,7 @@
 #include <span>
 #include <stdexcept>
 
-#include "HashTypes.hpp"
+#include "types.hpp"
 
 namespace wedding_cake {
 
