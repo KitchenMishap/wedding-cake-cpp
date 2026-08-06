@@ -76,27 +76,11 @@ public:
         }
     }
 
-    // Non-copyable, move-only resource management
+    // Non-copyable, non-movable, to prevent cross-thread sharing
     HashesOrderFileWriter(const HashesOrderFileWriter&) = delete;
     HashesOrderFileWriter& operator=(const HashesOrderFileWriter&) = delete;
-
-    HashesOrderFileWriter(HashesOrderFileWriter&& other) noexcept
-        : HashesOrderFile(std::move(other)),
-            file_(std::move(other.file_)){}
-
-    HashesOrderFileWriter& operator=(HashesOrderFileWriter&& other) noexcept {
-        if (this != &other) {
-            if (file_.is_open()) {
-                file_.close();
-            }
-            file_ = std::move(other.file_);
-            local_pi_bytes_ = other.local_pi_bytes_;
-            tail_bits_count_ = other.tail_bits_count_;
-            tail_bits_bytes_ = other.tail_bits_bytes_;
-            entry_bytes_ = other.entry_bytes_;
-        }
-        return *this;
-    }
+    HashesOrderFileWriter(HashesOrderFileWriter&& other) = delete;
+    HashesOrderFileWriter& operator=(HashesOrderFileWriter&& other)  = delete;
 
     // Appends to file
     void append(const Entry& entry) {

@@ -92,25 +92,11 @@ public:
         }
     }
 
+    // Non-copyable, non-movable, to prevent cross-thread sharing
     PrefixEntriesFileWriter(const PrefixEntriesFileWriter&) = delete;
     PrefixEntriesFileWriter& operator=(const PrefixEntriesFileWriter&) = delete;
-
-    PrefixEntriesFileWriter(PrefixEntriesFileWriter&& other) noexcept
-        : PrefixEntriesFile(std::move(other)),
-          stream_buffer_(std::move(other.stream_buffer_)),
-          file_(std::move(other.file_)) {}
-
-    PrefixEntriesFileWriter& operator=(PrefixEntriesFileWriter&& other) noexcept {
-        if (this != &other) {
-            PrefixEntriesFile::operator=(std::move(other));
-            if (file_.is_open()) {
-                file_.close();
-            }
-            stream_buffer_ = std::move(other.stream_buffer_);
-            file_ = std::move(other.file_);
-        }
-        return *this;
-    }
+    PrefixEntriesFileWriter(PrefixEntriesFileWriter&& other) = delete;
+    PrefixEntriesFileWriter& operator=(PrefixEntriesFileWriter&& other) = delete;
 
     // Appends an entry's prefix and LocalPi to disk
     void append(const Entry& entry) {
