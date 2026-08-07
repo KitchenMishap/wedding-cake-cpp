@@ -13,6 +13,7 @@
 
 namespace wedding_cake {
 
+// HashesOrderFileWriter and HashesOrderFileReader, for thread safety, can only be constructed by ReaderWriterFactory
 class HashesOrderFileWriter;
 class HashesOrderFileReader;
 
@@ -24,23 +25,23 @@ public:
     struct Entry {
         LocalPi local_pi{LOCAL_PI_NO_MATCH};
         uint64_t tail_bits{0};
-        uint64_t spare_bits{0}; // Top unused bits in the tail_bits field
+        uint8_t spare_bits{0}; // Top unused bits in the tail_bits field
     };
 
-    [[nodiscard]] size_t entry_size_bytes() const noexcept { return entry_bytes_; }
+    [[nodiscard]] size_t entry_size_bytes() const noexcept { return entry_bytes_count_; }
     [[nodiscard]] uint8_t tail_bits_count() const noexcept { return tail_bits_count_; }
     [[nodiscard]] uint8_t spare_bits_count() const noexcept {
-        return (tail_bits_bytes_ * 8) - tail_bits_count_;
+        return (tail_bits_bytes_count_ * 8) - tail_bits_count_;
     }
 
 private:
-    HashesOrderFile(uint8_t local_pi_bytes,     // Please construct using HashesOrderFileWriter / Reader
-                    uint8_t tail_bits_count)
-        : local_pi_bytes_(local_pi_bytes),
+    HashesOrderFile(const uint8_t local_pi_bytes_count,     // Ctor permitted when deriving from HashesOrderFileReader/Writer
+                    const uint8_t tail_bits_count)
+        : local_pi_bytes_count_(local_pi_bytes_count),
           tail_bits_count_(tail_bits_count),
-          tail_bits_bytes_((tail_bits_count + 7) / 8),
-          entry_bytes_(local_pi_bytes_ + tail_bits_bytes_) {
-        if (local_pi_bytes_ == 0 || local_pi_bytes_ > 8) {
+          tail_bits_bytes_count_((tail_bits_count + 7) / 8),
+          entry_bytes_count_(local_pi_bytes_count_ + tail_bits_bytes_count_) {
+        if (local_pi_bytes_count_ == 0 || local_pi_bytes_count_ > 8) {
             throw std::invalid_argument("local_pi_bytes must be between 1 and 8");
         }
         if (tail_bits_count_ > 64) {
@@ -48,23 +49,30 @@ private:
         }
     }
 protected:
-    uint8_t local_pi_bytes_{0};
+    uint8_t local_pi_bytes_count_{0};
     uint8_t tail_bits_count_{0};
-    uint8_t tail_bits_bytes_{0};
-    size_t  entry_bytes_{0};
+    uint8_t tail_bits_bytes_count_{0};
+    size_t  entry_bytes_count_{0};
 };
 
 
 class HashesOrderFileWriter : public HashesOrderFile {
 public:
+    // Token that only ReaderWriterFactory can create
+    class Key {
+        friend class ReaderWriterFactory;
+        explicit Key() = default;
+    };
+
     // Creates a file managed internally by path
-    HashesOrderFileWriter(const std::filesystem::path& path,
-                    uint8_t local_pi_bytes, 
+    HashesOrderFileWriter( Key,
+                    const std::filesystem::path& path,
+                    uint8_t local_pi_bytes_count,
                     uint8_t tail_bits_count)
-    : HashesOrderFile(local_pi_bytes, tail_bits_count)
+    : HashesOrderFile(local_pi_bytes_count, tail_bits_count)
     {
-        // Create in binary mode for writing (truncates existing content)
-        file_.open(path, std::ios::out | std::ios::trunc | std::ios::binary);
+        // Open in binary mode for writing (append)
+        file_.open(path, std::ios::out | std::ios::app | std::ios::binary);
         if (!file_.is_open()) {
             throw std::runtime_error("Failed to open HashesOrderFile at: " + path.string());
         }
@@ -91,10 +99,10 @@ public:
         } else {
             pi_raw = entry.local_pi.to_int();
         }
-        file_.write(reinterpret_cast<const char*>(&pi_raw), local_pi_bytes_);
+        file_.write(reinterpret_cast<const char*>(&pi_raw), local_pi_bytes_count_);
 
         // 2. Prepare tail_bits & spare_bits bytes (Little-Endian)
-        if (tail_bits_bytes_ > 0) {
+        if (tail_bits_bytes_count_ > 0) {
             uint64_t tail_field_raw = 0;
 
             if (tail_bits_count_ > 0) {
@@ -108,7 +116,7 @@ public:
                 tail_field_raw |= ((entry.spare_bits & spare_mask) << tail_bits_count_);
             }
 
-            file_.write(reinterpret_cast<const char*>(&tail_field_raw), tail_bits_bytes_);
+            file_.write(reinterpret_cast<const char*>(&tail_field_raw), tail_bits_bytes_count_);
         }
     }
 
@@ -120,13 +128,22 @@ private:
     std::ofstream file_;
 };
 
+class ReaderWriterFactory;
+
 class HashesOrderFileReader : public HashesOrderFile {
 public:
+    // Token only ReaderWriterFactory can access
+    class Key {
+        friend ReaderWriterFactory;
+        explicit Key() = default;
+    };
+
     // Opens (or creates) a file managed internally by path
-    HashesOrderFileReader(const std::filesystem::path& path,
-                    uint8_t local_pi_bytes,
+    HashesOrderFileReader(Key,
+                    const std::filesystem::path& path,
+                    uint8_t local_pi_bytes_count,
                     uint8_t tail_bits_count)
-        : HashesOrderFile(local_pi_bytes, tail_bits_count)
+        : HashesOrderFile(local_pi_bytes_count, tail_bits_count)
     {
         // Open in binary mode for reading
         file_.open(path, std::ios::in | std::ios::binary);
@@ -141,31 +158,15 @@ public:
         }
     }
 
-    // Non-copyable, move-only resource management
+    // Non-copyable, non-movable, to prevent cross-thread sharing
     HashesOrderFileReader(const HashesOrderFileReader&) = delete;
     HashesOrderFileReader& operator=(const HashesOrderFileReader&) = delete;
-
-    HashesOrderFileReader(HashesOrderFileReader&& other) noexcept
-        : file_(std::move(other.file_)),
-            HashesOrderFile(std::move(other)) {}
-
-    HashesOrderFileReader& operator=(HashesOrderFileReader&& other) noexcept {
-        if (this != &other) {
-            if (file_.is_open()) {
-                file_.close();
-            }
-            file_ = std::move(other.file_);
-            local_pi_bytes_ = other.local_pi_bytes_;
-            tail_bits_count_ = other.tail_bits_count_;
-            tail_bits_bytes_ = other.tail_bits_bytes_;
-            entry_bytes_ = other.entry_bytes_;
-        }
-        return *this;
-    }
+    HashesOrderFileReader(HashesOrderFileReader&& other) = delete;
+    HashesOrderFileReader& operator=(HashesOrderFileReader&& other) = delete;
 
     // Seeks to zero-based entry index
     bool seek_entry(uint64_t index) {
-        const auto pos = static_cast<std::streamoff>(index * entry_bytes_);
+        const auto pos = static_cast<std::streamoff>(index * entry_bytes_count_);
         file_.seekg(pos, std::ios::beg);
         return file_.good();
     }
@@ -178,15 +179,15 @@ public:
     // Reads entry at current file position
     [[nodiscard]] Entry read_next() {
         Entry entry{};
-        if (entry_bytes_ == 0) return entry;
+        if (entry_bytes_count_ == 0) return entry;
 
         // 1. Read LocalPi bytes (Little-Endian)
         if (!has_more()) return entry;
         uint64_t pi_raw = 0;
-        file_.read(reinterpret_cast<char*>(&pi_raw), local_pi_bytes_);
+        file_.read(reinterpret_cast<char*>(&pi_raw), local_pi_bytes_count_);
 
         // Check if all N bytes read are 0xFF (sentinel for LOCAL_PI_NO_MATCH)
-        uint64_t max_pi_mask = (local_pi_bytes_ == 8) ? ~0ULL : ((1ULL << (local_pi_bytes_ * 8)) - 1);
+        uint64_t max_pi_mask = (local_pi_bytes_count_ == 8) ? ~0ULL : ((1ULL << (local_pi_bytes_count_ * 8)) - 1);
         if ((pi_raw & max_pi_mask) == max_pi_mask) {
             entry.local_pi = LOCAL_PI_NO_MATCH;
         } else {
@@ -194,9 +195,9 @@ public:
         }
 
         // 2. Read tail_bits & spare_bits bytes (if tail_bits_bytes_ > 0)
-        if (tail_bits_bytes_ > 0) {
+        if (tail_bits_bytes_count_ > 0) {
             uint64_t tail_field_raw = 0;
-            file_.read(reinterpret_cast<char*>(&tail_field_raw), tail_bits_bytes_);
+            file_.read(reinterpret_cast<char*>(&tail_field_raw), tail_bits_bytes_count_);
 
             if (tail_bits_count_ == 0) {
                 entry.tail_bits = 0;

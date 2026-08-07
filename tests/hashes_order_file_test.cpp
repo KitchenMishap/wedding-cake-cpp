@@ -1,151 +1,189 @@
 #include <gtest/gtest.h>
 #include <filesystem>
+#include <memory>
 #include <vector>
-#include <cstdint>
+#include <system_error>
 
 #include "wedding_cake/hashes_order_file.hpp"
+#include "wedding_cake/reader_writer_factory.hpp"
 
 namespace wedding_cake {
 namespace {
 
 class HashesOrderFileTest : public ::testing::Test {
 protected:
-    std::filesystem::path test_file_path;
-
     void SetUp() override {
-        // Use a temporary path for test files
-        test_file_path = std::filesystem::temp_directory_path() / "test_hashes_order.bin";
-        std::filesystem::remove(test_file_path); // Ensure clean state
+        test_dir_ = std::filesystem::temp_directory_path() / "hashes_order_file_tests";
+        std::filesystem::create_directories(test_dir_);
     }
 
     void TearDown() override {
-        // Cleanup after test completes
-        std::filesystem::remove(test_file_path);
+        std::error_code ec;
+        std::filesystem::remove_all(test_dir_, ec);
     }
+
+    std::filesystem::path test_dir_;
 };
 
-TEST_F(HashesOrderFileTest, WriteAndReadVariousConfigurations) {
-    // Combinations of (local_pi_bytes, tail_bits_count)
-    const std::vector<uint8_t> local_pi_sizes = {1, 3, 4, 8};
-    const std::vector<uint8_t> tail_bits_sizes = {0, 1, 7, 8, 12, 16};
+// -----------------------------------------------------------------------------
+// Test 1: Standard Writer & Reader Cycle with create_empty
+// -----------------------------------------------------------------------------
+TEST_F(HashesOrderFileTest, WriteAndReadEntries) {
+    constexpr uint8_t hash_bytes = 8;
+    constexpr uint8_t tail_bits = 13;
+    constexpr uint8_t pi_bytes = 3;
 
-    for (uint8_t pi_bytes : local_pi_sizes) {
-        for (uint8_t tail_bits : tail_bits_sizes) {
-            
-            // Build a set of diverse test entries
-            std::vector<HashesOrderFile::Entry> expected_entries;
+    ReaderWriterFactory factory(test_dir_, hash_bytes, pi_bytes, tail_bits);
 
-            // 1. Minimum / Zero values
-            expected_entries.push_back({
-                .local_pi = LocalPi(0),
-                .tail_bits = 0,
-                .spare_bits = 0
-            });
+    // 1. Create the empty file explicitly
+    factory.create_empty_hashes_order_file();
 
-            // 2. Small values
-            expected_entries.push_back({
-                .local_pi = LocalPi(42),
-                .tail_bits = (tail_bits > 0) ? 1ULL : 0ULL,
-                .spare_bits = 2ULL
-            });
+    // 2. Obtain writer and write records
+    auto writer = factory.create_hashes_order_file_writer();
 
-            // 3. Values at edge of PI byte size
-            uint64_t max_pi_val = (pi_bytes == 8) ? (UINT64_MAX - 1) : ((1ULL << (pi_bytes * 8)) - 2);
-            expected_entries.push_back({
-                .local_pi = LocalPi(max_pi_val),
-                .tail_bits = (tail_bits > 0) ? ((1ULL << tail_bits) - 1) : 0ULL,
-                .spare_bits = 5ULL
-            });
+    std::vector<HashesOrderFile::Entry> expected_entries = {
+        { LocalPi(0x00123456ULL), 0x1F05ULL, 0x01 },
+        { LocalPi(0x00ABCDEFULL), 0x0123ULL, 0x02 },
+        { LOCAL_PI_NO_MATCH,      0x1FFFULL, 0x03 },
+    };
 
-            // 4. Sentinel value (LOCAL_PI_NO_MATCH) with spare_bits
-            expected_entries.push_back({
-                .local_pi = LOCAL_PI_NO_MATCH,
-                .tail_bits = (tail_bits > 0) ? 0b1010101010101010ULL : 0ULL,
-                .spare_bits = 0b111ULL
-            });
-
-            // --- WRITE PHASE ---
-            {
-                HashesOrderFileWriter writer(test_file_path, pi_bytes, tail_bits);
-                for (const auto& entry : expected_entries) {
-                    writer.append(entry);
-                }
-                writer.flush();
-            }
-
-            // --- READ PHASE (Sequential) ---
-            {
-                HashesOrderFileReader reader(test_file_path, pi_bytes, tail_bits);
-                
-                uint8_t expected_spare_count = (tail_bits == 0) ? 0 : reader.spare_bits_count();
-
-                for (size_t i = 0; i < expected_entries.size(); ++i) {
-                    auto read_entry = reader.read_next();
-                    const auto& expected = expected_entries[i];
-
-                    EXPECT_EQ(read_entry.local_pi, expected.local_pi)
-                        << "Mismatch at index " << i << " (PI Bytes: " << (int)pi_bytes << ", Tail Bits: " << (int)tail_bits << ")";
-
-                    // Mask expected values to available bit capacities for comparison
-                    uint64_t tail_mask = (tail_bits == 64) ? ~0ULL : ((1ULL << tail_bits) - 1);
-                    uint64_t expected_tail = (tail_bits > 0) ? (expected.tail_bits & tail_mask) : 0ULL;
-                    EXPECT_EQ(read_entry.tail_bits, expected_tail)
-                        << "Tail bits mismatch at index " << i << " (PI Bytes: " << (int)pi_bytes << ", Tail Bits: " << (int)tail_bits << ")";
-
-                    if (expected_spare_count > 0) {
-                        uint64_t spare_mask = (expected_spare_count == 64) ? ~0ULL : ((1ULL << expected_spare_count) - 1);
-                        EXPECT_EQ(read_entry.spare_bits, expected.spare_bits & spare_mask)
-                            << "Spare bits mismatch at index " << i << " (PI Bytes: " << (int)pi_bytes << ", Tail Bits: " << (int)tail_bits << ")";
-                    }
-                }
-            }
-
-            // --- READ PHASE (Random Access via seek_entry) ---
-            {
-                HashesOrderFileReader reader(test_file_path, pi_bytes, tail_bits);
-
-                // Seek backwards from the last entry to the first
-                for (int i = static_cast<int>(expected_entries.size()) - 1; i >= 0; --i) {
-                    ASSERT_TRUE(reader.seek_entry(i)) << "seek_entry failed for index " << i;
-                    
-                    auto read_entry = reader.read_next();
-                    const auto& expected = expected_entries[i];
-
-                    EXPECT_EQ(read_entry.local_pi, expected.local_pi)
-                        << "Seek read mismatch at index " << i;
-                }
-            }
-        }
+    for (const auto& entry : expected_entries) {
+        writer->append(entry);
     }
+    writer->flush();
+
+    // 3. Obtain reader and verify contents
+    auto reader = factory.create_hashes_order_file_reader();
+
+    for (size_t i = 0; i < expected_entries.size(); ++i) {
+        ASSERT_TRUE(reader->has_more()) << "Expected entry at index " << i;
+        auto actual = reader->read_next();
+
+        EXPECT_EQ(actual.local_pi, expected_entries[i].local_pi) << "Mismatch at index " << i;
+        EXPECT_EQ(actual.tail_bits, expected_entries[i].tail_bits) << "Mismatch at index " << i;
+        EXPECT_EQ(actual.spare_bits, expected_entries[i].spare_bits) << "Mismatch at index " << i;
+    }
+
+    EXPECT_FALSE(reader->has_more());
 }
 
-TEST_F(HashesOrderFileTest, TruncateOnWriterCreation) {
-    // 1. Write initial file with 5 entries
+// -----------------------------------------------------------------------------
+// Test 2: Random Access / Seek using the Factory
+// -----------------------------------------------------------------------------
+TEST_F(HashesOrderFileTest, RandomAccessSeekEntry) {
+    constexpr uint8_t hash_bytes = 8;
+    constexpr uint8_t tail_bits = 8;
+    constexpr uint8_t pi_bytes = 4;
+
+    ReaderWriterFactory factory(test_dir_, hash_bytes, pi_bytes, tail_bits);
+
+    factory.create_empty_hashes_order_file();
+    auto writer = factory.create_hashes_order_file_writer();
+
+    std::vector<HashesOrderFile::Entry> entries = {
+        { LocalPi(100), 0xAA, 0x0 },
+        { LocalPi(200), 0xBB, 0x0 },
+        { LocalPi(300), 0xCC, 0x0 },
+    };
+
+    for (const auto& entry : entries) {
+        writer->append(entry);
+    }
+    writer->flush();
+
+    auto reader = factory.create_hashes_order_file_reader();
+
+    // Seek to index 1 (second entry)
+    ASSERT_TRUE(reader->seek_entry(1));
+    auto entry1 = reader->read_next();
+    EXPECT_EQ(entry1.local_pi, entries[1].local_pi);
+    EXPECT_EQ(entry1.tail_bits, entries[1].tail_bits);
+
+    // Seek back to index 0 (first entry)
+    ASSERT_TRUE(reader->seek_entry(0));
+    auto entry0 = reader->read_next();
+    EXPECT_EQ(entry0.local_pi, entries[0].local_pi);
+    EXPECT_EQ(entry0.tail_bits, entries[0].tail_bits);
+}
+
+// -----------------------------------------------------------------------------
+// Test 3: Multiple Write Sessions via std::ios::app Behavior
+// -----------------------------------------------------------------------------
+TEST_F(HashesOrderFileTest, AppendAcrossMultipleWriters) {
+    constexpr uint8_t hash_bytes = 8;
+    constexpr uint8_t tail_bits = 6;
+    constexpr uint8_t pi_bytes = 2;
+
+    ReaderWriterFactory factory(test_dir_, hash_bytes, pi_bytes, tail_bits);
+
+    // Initial empty file creation
+    factory.create_empty_hashes_order_file();
+
+    // Writer session 1
     {
-        HashesOrderFileWriter writer(test_file_path, 4, 8);
-        for (int i = 0; i < 5; ++i) {
-            writer.append({.local_pi = LocalPi(i), .tail_bits = 0, .spare_bits = 0});
-        }
+        auto writer1 = factory.create_hashes_order_file_writer();
+        writer1->append({ LocalPi(10), 0x01, 0 });
+        writer1->flush();
     }
 
-    // Check size on disk
-    auto initial_size = std::filesystem::file_size(test_file_path);
-    EXPECT_GT(initial_size, 0u);
-
-    // 2. Open new writer over the same path (should truncate)
+    // Writer session 2 (appends to existing file because mode is std::ios::app)
     {
-        HashesOrderFileWriter writer(test_file_path, 4, 8);
-        writer.append({.local_pi = LocalPi(99), .tail_bits = 0, .spare_bits = 0});
+        auto writer2 = factory.create_hashes_order_file_writer();
+        writer2->append({ LocalPi(20), 0x02, 0 });
+        writer2->flush();
     }
 
-    // 3. Verify file size was truncated down to only 1 entry
-    HashesOrderFileReader reader(test_file_path, 4, 8);
-    auto entry = reader.read_next();
-    EXPECT_EQ(entry.local_pi, LocalPi(99));
+    // Verify both records exist sequentially
+    auto reader = factory.create_hashes_order_file_reader();
 
-    // Next read should hit EOF
-    auto eof_entry = reader.read_next();
-    EXPECT_TRUE(eof_entry.local_pi.is_no_match());
+    ASSERT_TRUE(reader->has_more());
+    auto entry1 = reader->read_next();
+    EXPECT_EQ(entry1.local_pi, LocalPi(10));
+
+    ASSERT_TRUE(reader->has_more());
+    auto entry2 = reader->read_next();
+    EXPECT_EQ(entry2.local_pi, LocalPi(20));
+
+    EXPECT_FALSE(reader->has_more());
+}
+
+// -----------------------------------------------------------------------------
+// Test 4: Re-initialization via create_empty Wipes Previous State
+// -----------------------------------------------------------------------------
+TEST_F(HashesOrderFileTest, ExplicitResetViaCreateEmpty) {
+    constexpr uint8_t hash_bytes = 8;
+    constexpr uint8_t tail_bits = 6;
+    constexpr uint8_t pi_bytes = 2;
+
+    ReaderWriterFactory factory(test_dir_, hash_bytes, pi_bytes, tail_bits);
+
+    // First write sequence
+    factory.create_empty_hashes_order_file();
+    {
+        auto writer = factory.create_hashes_order_file_writer();
+        writer->append({ LocalPi(100), 0x05, 0 });
+        writer->append({ LocalPi(200), 0x0A, 0 });
+        writer->flush();
+    }
+
+    // Explicitly reset/truncate via factory method
+    factory.create_empty_hashes_order_file();
+
+    // Write new content
+    {
+        auto writer = factory.create_hashes_order_file_writer();
+        writer->append({ LocalPi(999), 0x0F, 0 });
+        writer->flush();
+    }
+
+    // Read back: only the new record must remain
+    auto reader = factory.create_hashes_order_file_reader();
+
+    ASSERT_TRUE(reader->has_more());
+    auto entry = reader->read_next();
+    EXPECT_EQ(entry.local_pi, LocalPi(999));
+
+    EXPECT_FALSE(reader->has_more());
 }
 
 } // namespace

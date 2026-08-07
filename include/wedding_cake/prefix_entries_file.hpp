@@ -17,6 +17,7 @@ namespace wedding_cake {
 
 class PrefixEntriesFileWriter;
 class PrefixEntriesFileReader;
+class ReaderWriterFactory;
 
 // Base class containing format metadata and entry representation
 class PrefixEntriesFile {
@@ -30,37 +31,37 @@ public:
     };
 
     [[nodiscard]] size_t entry_size_bytes() const noexcept { return entry_bytes_; }
-    [[nodiscard]] uint8_t prefix_bytes_count() const noexcept { return prefix_bytes_; }
-    [[nodiscard]] uint8_t local_pi_bytes_count() const noexcept { return local_pi_bytes_; }
+    [[nodiscard]] uint8_t prefix_bytes_count() const noexcept { return prefix_bytes_count_; }
+    [[nodiscard]] uint8_t local_pi_bytes_count() const noexcept { return local_pi_bytes_count_; }
 
 protected:
-    PrefixEntriesFile(uint8_t hash_bytes, uint8_t tail_bits_count, uint8_t local_pi_bytes)
-        : hash_bytes_(hash_bytes),
-          tail_bits_count_(tail_bits_count),
-          local_pi_bytes_(local_pi_bytes)
+    PrefixEntriesFile(const uint8_t hash_bytes_count, const uint8_t local_pi_bytes_count, const uint8_t tail_bits_count)
+        : hash_bytes_count_(hash_bytes_count),
+          local_pi_bytes_count_(local_pi_bytes_count),
+          tail_bits_count_(tail_bits_count)
     {
-        if (hash_bytes_ == 0 || hash_bytes_ > 64) {
+        if (hash_bytes_count_ == 0 || hash_bytes_count_ > 64) {
             throw std::invalid_argument("hash_bytes must be between 1 and 64");
         }
-        if (tail_bits_count_ >= static_cast<uint16_t>(hash_bytes_) * 8) {
+        if (tail_bits_count_ >= static_cast<uint16_t>(hash_bytes_count_) * 8) {
             throw std::invalid_argument("tail_bits_count must be strictly less than total hash bits");
         }
-        if (local_pi_bytes_ == 0 || local_pi_bytes_ > 8) {
+        if (local_pi_bytes_count_ == 0 || local_pi_bytes_count_ > 8) {
             throw std::invalid_argument("local_pi_bytes must be between 1 and 8");
         }
 
-        uint16_t total_hash_bits = static_cast<uint16_t>(hash_bytes_) * 8;
-        uint16_t prefix_bits = total_hash_bits - tail_bits_count_;
-        prefix_bytes_ = static_cast<uint8_t>((prefix_bits + 7) / 8);
+        const uint16_t total_hash_bits = static_cast<uint16_t>(hash_bytes_count_) * 8;
+        const uint16_t prefix_bits = total_hash_bits - tail_bits_count_;
+        prefix_bytes_count_ = static_cast<uint8_t>((prefix_bits + 7) / 8);
 
-        entry_bytes_ = prefix_bytes_ + local_pi_bytes_;
-        prefix_start_idx_ = hash_bytes_ - prefix_bytes_;
+        entry_bytes_ = prefix_bytes_count_ + local_pi_bytes_count_;
+        prefix_start_idx_ = hash_bytes_count_ - prefix_bytes_count_;
     }
 
-    uint8_t hash_bytes_{0};
+    uint8_t hash_bytes_count_{0};
+    uint8_t local_pi_bytes_count_{0};
     uint8_t tail_bits_count_{0};
-    uint8_t local_pi_bytes_{0};
-    uint8_t prefix_bytes_{0};
+    uint8_t prefix_bytes_count_{0};
     size_t  prefix_start_idx_{0};
     size_t  entry_bytes_{0};
 
@@ -68,21 +69,28 @@ protected:
 };
 
 // ============================================================================
-// WRITER CLASS (Write-Only, Sequential Appending, Truncates Existing)
+// WRITER CLASS (Write-Only, Sequential Appending)
 // ============================================================================
 class PrefixEntriesFileWriter : public PrefixEntriesFile {
 public:
-    PrefixEntriesFileWriter(const std::filesystem::path& path,
-                            uint8_t hash_bytes,
-                            uint8_t tail_bits_count,
-                            uint8_t local_pi_bytes)
-        : PrefixEntriesFile(hash_bytes, tail_bits_count, local_pi_bytes),
+    // Token that only ReaderWriterFactory can construct
+    class Key {
+        friend ReaderWriterFactory;
+        explicit Key() = default;
+    };
+
+    PrefixEntriesFileWriter(Key,
+                            const std::filesystem::path& path,
+                            uint8_t hash_bytes_count,
+                            uint8_t local_pi_bytes_count,
+                            uint8_t tail_bits_count)
+        : PrefixEntriesFile(hash_bytes_count, local_pi_bytes_count, tail_bits_count),
           stream_buffer_(STREAM_BUFFER_SIZE)
     {
         file_.rdbuf()->pubsetbuf(stream_buffer_.data(), stream_buffer_.size());
-        file_.open(path, std::ios::out | std::ios::binary | std::ios::trunc);
+        file_.open(path, std::ios::out | std::ios::binary | std::ios::app);
         if (!file_.is_open()) {
-            throw std::runtime_error("Failed to create/overwrite PrefixEntriesFile at: " + path.string());
+            throw std::runtime_error("Failed to open PrefixEntriesFile at: " + path.string());
         }
     }
 
@@ -100,17 +108,17 @@ public:
 
     // Appends an entry's prefix and LocalPi to disk
     void append(const Entry& entry) {
-        if (entry.hash.size() < hash_bytes_) {
+        if (entry.hash.size() < hash_bytes_count_) {
             throw std::invalid_argument("Provided HashView is smaller than configured hash_bytes");
         }
 
         // 1. Write prefix bytes from high-order end of HashView span
         const uint8_t* prefix_ptr = entry.hash.bytes().data() + prefix_start_idx_;
-        file_.write(reinterpret_cast<const char*>(prefix_ptr), prefix_bytes_);
+        file_.write(reinterpret_cast<const char*>(prefix_ptr), prefix_bytes_count_);
 
         // 2. Write LocalPi bytes (Little-Endian raw integer)
         uint64_t pi_raw = entry.local_pi.to_int();
-        file_.write(reinterpret_cast<const char*>(&pi_raw), local_pi_bytes_);
+        file_.write(reinterpret_cast<const char*>(&pi_raw), local_pi_bytes_count_);
     }
 
     void flush() {
@@ -127,11 +135,18 @@ private:
 // ============================================================================
 class PrefixEntriesFileReader : public PrefixEntriesFile {
 public:
-    PrefixEntriesFileReader(const std::filesystem::path& path,
+    // Token only available to ReaderWriterFactory
+    class Key {
+        friend ReaderWriterFactory;
+        explicit Key() = default;
+    };
+
+    PrefixEntriesFileReader(Key,
+                            const std::filesystem::path& path,
                             uint8_t hash_bytes,
-                            uint8_t tail_bits_count,
-                            uint8_t local_pi_bytes)
-        : PrefixEntriesFile(hash_bytes, tail_bits_count, local_pi_bytes),
+                            uint8_t local_pi_bytes,
+                            uint8_t tail_bits_count)
+        : PrefixEntriesFile(hash_bytes, local_pi_bytes, tail_bits_count),
           stream_buffer_(STREAM_BUFFER_SIZE)
     {
         file_.rdbuf()->pubsetbuf(stream_buffer_.data(), stream_buffer_.size());
@@ -147,25 +162,11 @@ public:
         }
     }
 
+    // Non-copyable, non-movable, to prevent cross-thread sharing
     PrefixEntriesFileReader(const PrefixEntriesFileReader&) = delete;
     PrefixEntriesFileReader& operator=(const PrefixEntriesFileReader&) = delete;
-
-    PrefixEntriesFileReader(PrefixEntriesFileReader&& other) noexcept
-        : PrefixEntriesFile(std::move(other)),
-          stream_buffer_(std::move(other.stream_buffer_)),
-          file_(std::move(other.file_)) {}
-
-    PrefixEntriesFileReader& operator=(PrefixEntriesFileReader&& other) noexcept {
-        if (this != &other) {
-            PrefixEntriesFile::operator=(std::move(other));
-            if (file_.is_open()) {
-                file_.close();
-            }
-            stream_buffer_ = std::move(other.stream_buffer_);
-            file_ = std::move(other.file_);
-        }
-        return *this;
-    }
+    PrefixEntriesFileReader(PrefixEntriesFileReader&& other) = delete;
+    PrefixEntriesFileReader& operator=(PrefixEntriesFileReader&& other)= delete;
 
     // Seeks to zero-based entry index
     bool seek_entry(uint64_t index) {
@@ -191,27 +192,27 @@ public:
     // out_hash_buf MUST have size >= hash_bytes_. Low-order tail bytes are left untouched.
     bool read_next(std::span<uint8_t> out_hash_buf, LocalPi& out_local_pi) {
         if (!file_ || entry_bytes_ == 0) return false;
-        if (out_hash_buf.size() < hash_bytes_) {
+        if (out_hash_buf.size() < hash_bytes_count_) {
             throw std::invalid_argument("Destination buffer is smaller than configured hash_bytes");
         }
 
         // 1. Read prefix bytes directly into the high-order section of out_hash_buf
         uint8_t* prefix_ptr = out_hash_buf.data() + prefix_start_idx_;
-        file_.read(reinterpret_cast<char*>(prefix_ptr), prefix_bytes_);
+        file_.read(reinterpret_cast<char*>(prefix_ptr), prefix_bytes_count_);
 
-        if (static_cast<size_t>(file_.gcount()) < prefix_bytes_) {
+        if (static_cast<size_t>(file_.gcount()) < prefix_bytes_count_) {
             return false;
         }
 
         // 2. Read LocalPi bytes
         uint64_t pi_raw = 0;
-        file_.read(reinterpret_cast<char*>(&pi_raw), local_pi_bytes_);
+        file_.read(reinterpret_cast<char*>(&pi_raw), local_pi_bytes_count_);
 
-        if (static_cast<size_t>(file_.gcount()) < local_pi_bytes_) {
+        if (static_cast<size_t>(file_.gcount()) < local_pi_bytes_count_) {
             return false;
         }
 
-        uint64_t pi_mask = (local_pi_bytes_ == 8) ? ~0ULL : ((1ULL << (local_pi_bytes_ * 8)) - 1);
+        uint64_t pi_mask = (local_pi_bytes_count_ == 8) ? ~0ULL : ((1ULL << (local_pi_bytes_count_ * 8)) - 1);
         out_local_pi = LocalPi(pi_raw & pi_mask);
 
         return true;
