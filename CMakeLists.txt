@@ -10,7 +10,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Ensure RelWithDebInfo or Debug build types carry frame pointers globally
+# Ensure RelWithDebInfo or Debug build types carry frame pointers globally for flame graphs
 add_compile_options(
         $<$<COMPILE_LANGUAGE:CXX>:-fno-omit-frame-pointer>
         $<$<COMPILE_LANGUAGE:CXX>:-mno-omit-leaf-frame-pointer>
@@ -18,11 +18,13 @@ add_compile_options(
 
 include_directories(include)
 
-# Fetch GoogleTest
+# -----------------------------------------------------------------------------
+# 1. Fetch GoogleTest Dependency
+# -----------------------------------------------------------------------------
 include(FetchContent)
 FetchContent_Declare(
-  googletest
-  URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+        googletest
+        URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
 )
 
 # Prevent GoogleTest from installing itself or enabling its own internal tests/Python dependency
@@ -34,22 +36,39 @@ FetchContent_MakeAvailable(googletest)
 
 enable_testing()
 
-# Test Executable Target
+# -----------------------------------------------------------------------------
+# 2. Target A: Unit Tests Target (GoogleTest Runner)
+# -----------------------------------------------------------------------------
 add_executable(unit_tests
-    tests/shallow_tree_test.cpp
-        include/wedding_cake/types.hpp
-        include/wedding_cake/ShallowTree.hpp
+        tests/shallow_tree_test.cpp
         tests/hashes_order_file_test.cpp
         tests/prefix_entries_file_test.cpp
         tests/prefix_entries_path_test.cpp
+        tests/pipeline_test.cpp
+        include/wedding_cake/types.hpp
+        include/wedding_cake/ShallowTree.hpp
+        # Evolving Disk State Subsystem Headers
+        include/evolving_disk_state/external_feeder.hpp
+        include/evolving_disk_state/manifest_engine.hpp
+        include/evolving_disk_state/pipeline_buffer.hpp
+        include/evolving_disk_state/slice_context.hpp
+        include/evolving_disk_state/tier_orchestrator.hpp
+        include/evolving_disk_state/type_states.hpp
 )
+
+target_include_directories(unit_tests PRIVATE include)
 target_link_libraries(unit_tests PRIVATE gtest_main)
 
+# Register GoogleTest target explicitly for CTest & CLion Test Runner
 include(GoogleTest)
-gtest_discover_tests(unit_tests)
+gtest_discover_tests(unit_tests
+        DISCOVERY_TIMEOUT 30
+        PROPERTIES
+        LABELS "GoogleTest"
+)
 
 # -----------------------------------------------------------------------------
-# 3. Target B: Profiling Target (Standalone main)
+# 3. Target B: Profiling Target (Flame Graphs & Perf Analysis)
 # -----------------------------------------------------------------------------
 add_executable(profile_shallow_tree
         src/profile_main.cpp
@@ -66,15 +85,18 @@ if(NOT MSVC)
     target_compile_options(profile_shallow_tree PRIVATE
             -O2                         # Optimization enabled
             -g3                         # Full macro & line debug info
-            -fno-omit-frame-pointer     # Keep frame pointers
+            -fno-omit-frame-pointer     # Keep frame pointers for perf / eBPF flame graphs
             -mno-omit-leaf-frame-pointer
             -fno-optimize-sibling-calls # Prevents tail-call elimination
             -fno-inline                 # Stops inlining of functions explicitly marked inline
             -fno-inline-functions       # Prevents compiler from auto-inlining functions under -O2
             -fno-default-inline         # Prevents inline member functions inside classes from inlining
     )
+endif()
 
+    # -rdynamic is Linux/POSIX specific for symbol exporting in profilers
+if(UNIX AND NOT APPLE)
     target_link_options(profile_shallow_tree PRIVATE
-            -rdynamic                   # Export dynamic symbols for perf/DTrace
+            -rdynamic
     )
 endif()

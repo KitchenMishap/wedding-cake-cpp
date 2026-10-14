@@ -1,14 +1,13 @@
-// Purpose: Provides nested RAII execution scopes for Work Slices and Microsteps.
-// Purpose: Hands opaque, requested file handles to worker lambdas during microsteps.
-// Purpose: Automatically records manifest declarations without worker classes knowing transaction mechanics.
-
 #pragma once
-#include "ManifestEngine.hpp"
-#include <unordered_map>
+#include <filesystem>
 #include <fstream>
-#include <string>
-#include <vector>
 #include <functional>
+#include <string>
+#include <unordered_map>
+#include <vector>
+#include "manifest_engine.hpp"
+
+namespace fs = std::filesystem;
 
 class SliceContext {
 public:
@@ -17,10 +16,21 @@ public:
 
     ~SliceContext() {
         std::vector<std::ofstream*> handles;
-        for (auto& [_, stream] : open_files_) {
+        for (auto& [fname, stream] : open_files_) {
+            stream.flush();
+            // Record the actual end position AFTER all worker writes in this slice completed
+            uint64_t final_pos = static_cast<uint64_t>(stream.tellp());
+            manifest_.record_microstep_declaration(fname, final_pos);
             handles.push_back(&stream);
         }
+
         manifest_.commit_work_slice(slice_id_, handles);
+
+        for (auto& [_, stream] : open_files_) {
+            if (stream.is_open()) {
+                stream.close();
+            }
+        }
     }
 
     // Microstep execution scope
@@ -37,13 +47,10 @@ public:
                     std::ofstream(state_dir_ / fname, std::ios::binary | std::ios::app)
                 );
             }
-            auto& stream = open_files_[fname];
-            uint64_t current_pos = static_cast<uint64_t>(stream.tellp());
-            manifest_.record_microstep_declaration(fname, current_pos);
-            active_handles[fname] = &stream;
+            active_handles[fname] = &open_files_[fname];
         }
 
-        // Run worker logic
+        // Run worker logic first
         action(active_handles);
     }
 

@@ -3,14 +3,29 @@
 // Purpose: Drives execution slices until reaching the terminal Product state in total settled determinism.
 
 #pragma once
-#include "TypeStates.hpp"
-#include "ManifestEngine.hpp"
-#include "SliceContext.hpp"
+#include "type_states.hpp"
+#include "manifest_engine.hpp"
+#include "slice_context.hpp"
 #include <memory>
 
 class TierOrchestrator {
 public:
     explicit TierOrchestrator(fs::path sack_dir) : sack_dir_(std::move(sack_dir)) {}
+
+    // Call from external thread: blocks until all pipeline buffers are empty
+    // and no workers are currently executing a work slice.
+    template <typename TElement>
+    void wait_for_settled(OutputBuffer<TElement>& buffer, std::atomic<int64_t>& in_flight_count) {
+        std::unique_lock<std::mutex> lock(settle_mutex_);
+        settle_cv_.wait(lock, [&]() {
+            return buffer.empty() && in_flight_count.load() == 0;
+        });
+    }
+
+    // Called by workers upon finishing a work slice to notify waiters
+    void notify_work_completed() {
+        settle_cv_.notify_all();
+    }
 
     void boot_and_recover() {
         // 1. Inspect physical folders to detect active state
@@ -77,4 +92,6 @@ private:
     fs::path active_dir_;
     StateKind current_state_ = StateKind::Origin;
     std::unique_ptr<ManifestEngine> manifest_engine_;
+    std::mutex settle_mutex_;
+    std::condition_variable settle_cv_;
 };

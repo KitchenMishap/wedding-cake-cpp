@@ -3,7 +3,7 @@
 // Purpose: Provides static class reflections for zero-hardcoding recovery and directory creation.
 
 #pragma once
-#include "SliceContext.hpp"
+#include "slice_context.hpp"
 #include <string_view>
 
 struct HashEntry {
