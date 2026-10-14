@@ -9,89 +9,66 @@
 
 namespace wedding_cake {
 
-// Forward declarations
-struct PiOffset;
-struct GlobalPi;
-
-// Sentinel values
 constexpr uint64_t PI_NO_MATCH_VAL = std::numeric_limits<uint64_t>::max();
 
 // -----------------------------------------------------------------------------
-// Strong Type Wrappers for Presentation Indices
+// Tag-based Strong Type Base
 // -----------------------------------------------------------------------------
+template <typename Tag, typename T = uint64_t>
+struct StrongIndex {
+    T value{PI_NO_MATCH_VAL};
 
-// Local Presentation Index (local to a ShallowTree / leaf group)
-struct LocalPi {
-    uint64_t value{PI_NO_MATCH_VAL};
-
-    constexpr LocalPi() noexcept = default;
-    explicit constexpr LocalPi(uint64_t v) noexcept : value(v) {}
-
-    [[nodiscard]] constexpr bool is_no_match() const noexcept {
-        return value == PI_NO_MATCH_VAL;
-    }
-
-    constexpr bool operator==(const LocalPi& other) const noexcept = default;
-    constexpr bool operator!=(const LocalPi& other) const noexcept = default;
-
-    // Translation helper
-    [[nodiscard]] GlobalPi to_global(PiOffset offset) const noexcept;
-    [[nodiscard]] uint64_t to_int() const noexcept;
-};
-
-// Global Presentation Index (global position across the entire dataset)
-struct GlobalPi {
-    uint64_t value{PI_NO_MATCH_VAL};
-
-    constexpr GlobalPi() noexcept = default;
-    explicit constexpr GlobalPi(uint64_t v) noexcept : value(v) {}
+    constexpr StrongIndex() noexcept = default;
+    explicit constexpr StrongIndex(T v) noexcept : value(v) {}
 
     [[nodiscard]] constexpr bool is_no_match() const noexcept {
         return value == PI_NO_MATCH_VAL;
     }
 
-    constexpr bool operator==(const GlobalPi& other) const noexcept = default;
-    constexpr bool operator!=(const GlobalPi& other) const noexcept = default;
+    [[nodiscard]] constexpr T to_int() const noexcept { return value; }
 
-    // Translation helper
-    [[nodiscard]] LocalPi to_local(PiOffset offset) const noexcept;
-    [[nodiscard]] uint64_t to_int() const noexcept;
+    constexpr auto operator<=>(const StrongIndex&) const noexcept = default;
 };
 
-// PiOffset (Base offset used to translate Local <-> Global)
-struct PiOffset {
-    uint64_t value{0};
+// -----------------------------------------------------------------------------
+// Distinct Strong Types
+// -----------------------------------------------------------------------------
+struct LocalPiTag {};
+struct GlobalPiTag {};
+struct PiOffsetTag {};
 
-    constexpr PiOffset() noexcept = default;
-    explicit constexpr PiOffset(uint64_t v) noexcept : value(v) {}
+using LocalPi  = StrongIndex<LocalPiTag>;
+using GlobalPi = StrongIndex<GlobalPiTag>;
 
-    constexpr bool operator==(const PiOffset& other) const noexcept = default;
-    [[nodiscard]] uint64_t to_int() const noexcept;
+struct PiOffset : StrongIndex<PiOffsetTag> {
+    using StrongIndex::StrongIndex;
+    constexpr PiOffset() noexcept : StrongIndex(0) {} // Default offset is 0
 };
 
 // Standard Sentinels
-constexpr LocalPi LOCAL_PI_NO_MATCH{PI_NO_MATCH_VAL};
+constexpr LocalPi  LOCAL_PI_NO_MATCH{PI_NO_MATCH_VAL};
 constexpr GlobalPi GLOBAL_PI_NO_MATCH{PI_NO_MATCH_VAL};
 
-// Inline translation implementations
-inline GlobalPi LocalPi::to_global(PiOffset offset) const noexcept {
-    if (is_no_match()) {
-        return GLOBAL_PI_NO_MATCH;
-    }
-    return GlobalPi(value + offset.value);
-}
-inline uint64_t LocalPi::to_int() const noexcept {
-    return value;
+// -----------------------------------------------------------------------------
+// Strongly-Typed Translation Operators
+// -----------------------------------------------------------------------------
+
+// LocalPi + PiOffset -> GlobalPi
+[[nodiscard]] constexpr GlobalPi operator+(LocalPi local, PiOffset offset) noexcept {
+    if (local.is_no_match()) return GLOBAL_PI_NO_MATCH;
+    return GlobalPi(local.value + offset.value);
 }
 
-inline LocalPi GlobalPi::to_local(PiOffset offset) const noexcept {
-    if (is_no_match() || value < offset.value) {
-        return LOCAL_PI_NO_MATCH;
-    }
-    return LocalPi(value - offset.value);
+// GlobalPi - PiOffset -> LocalPi
+[[nodiscard]] constexpr LocalPi operator-(GlobalPi global, PiOffset offset) noexcept {
+    if (global.is_no_match() || global.value < offset.value) return LOCAL_PI_NO_MATCH;
+    return LocalPi(global.value - offset.value);
 }
-inline uint64_t GlobalPi::to_int() const noexcept {
-    return value;
+
+// GlobalPi - GlobalPi -> PiOffset
+[[nodiscard]] constexpr PiOffset operator-(GlobalPi a, GlobalPi b) noexcept {
+    if (a.is_no_match() || b.is_no_match() || a.value < b.value) return PiOffset(0);
+    return PiOffset(a.value - b.value);
 }
 
 // -----------------------------------------------------------------------------
