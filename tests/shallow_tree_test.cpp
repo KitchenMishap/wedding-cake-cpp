@@ -10,7 +10,7 @@
 #include "../include/wedding_cake/types.hpp"
 
 // The code we are testing
-#include "../include/wedding_cake/ShallowTree.hpp"
+#include "../include/wedding_cake/shallow_tree.hpp"
 
 namespace wedding_cake {
 

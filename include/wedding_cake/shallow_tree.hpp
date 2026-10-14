@@ -12,6 +12,13 @@
 
 #include "types.hpp"
 
+// ShallowTree is an in-memory heap based data structure encoding a set of hash/LocalPi pairs for
+// later fast trie lookup, mapping hash's to LocalPi's.
+// The order of bytes to examine in the hash (on lookup) is optimized based on
+// presented hashes so as to encourage the tree to be shallow.
+// The root of the tree specifies the first byte index in the hash to examine,
+// and subsequent nodes specify further byte indices in the hash to examine.
+
 namespace wedding_cake {
 
 // Forward declarations

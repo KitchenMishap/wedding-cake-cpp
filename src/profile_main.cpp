@@ -1,7 +1,7 @@
 #include <iostream>
 #include <random>
 
-#include "../include/wedding_cake/ShallowTree.hpp"
+#include "../include/wedding_cake/shallow_tree.hpp"
 #include "../include/wedding_cake/types.hpp"
 
 // Fixed-seed PRNG for deterministic, reproducible test runs
