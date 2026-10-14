@@ -77,8 +77,8 @@ TEST_F(DigitsPathTest, Handles64TailBits) {
 // ============================================================================
 
 TEST_F(DigitsPathTest, ThrowsOnTailBitsExceeding64) {
-    EXPECT_THROW(make_prefix_entries_path(base_dir_, 65, 0), std::invalid_argument);
-    EXPECT_THROW(make_prefix_entries_path(base_dir_, 255, 0), std::invalid_argument);
+    EXPECT_THROW(auto dummy = make_prefix_entries_path(base_dir_, 65, 0), std::invalid_argument);
+    EXPECT_THROW(auto dummy = make_prefix_entries_path(base_dir_, 255, 0), std::invalid_argument);
 }
 
 } // namespace test
