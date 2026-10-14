@@ -60,6 +60,10 @@ std::array<size_t, 256> sort_partition_by_byte(
     std::span<HashPresentation> input,
     size_t byte_index)
 {
+    // Uses C++ features "ranges" and "projection lambdas".
+    // Ranges lets us specify a whole container rather than begin(), end()
+    // Projection lambda allows us to extract the item we're sorting on, rather than
+    // writing a custom comparison
     std::ranges::sort(input, {}, [byte_index](const HashPresentation& hp) {
         return hp.hash_bytes[byte_index];
     });
@@ -72,6 +76,7 @@ std::array<size_t, 256> sort_partition_by_byte(
 }
 
 // Strategy B: Linear Bucket Partition O(N)
+// (but Strategy A wins for small inputs: no heap allocation, and cache locality)
 std::array<size_t, 256> bucket_partition_by_byte(
     std::span<HashPresentation> input,
     size_t byte_index,
@@ -108,6 +113,8 @@ public:
 
     // Constructs the tree directly from a mutable span of HashPresentation.
     // Standard C++ idiom: Mutates the input span in-place during recursive partitioning.
+    // ls_tail_bits_count is an optionally non-zero number of least significant bits of the hash
+    // that are not used by the shallow tree. Specifying non-zero allows you to handle those externally.
     ShallowTree(std::span<HashPresentation> input,
                 size_t ls_tail_bits_count,
                 size_t total_hash_bytes,
@@ -156,6 +163,7 @@ public:
     // Result is only a candidate as not all bytes of hash are examined. False positives are possible.
     // The result is however unique within the tree.
     // The result is "reassured" by a few spare bytes of checking.
+    // In the wider context of wedding_cake, this fn is typically only used for testing.
     [[nodiscard]] LocalPi lookup_hash_unique_reassured_candidate(HashView target_hash) const {
         if (target_hash.size() != total_hash_bytes_ || root_slot_.is_empty()) {
             return LOCAL_PI_NO_MATCH;
