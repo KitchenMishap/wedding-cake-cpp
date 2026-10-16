@@ -16,6 +16,29 @@ add_compile_options(
         $<$<COMPILE_LANGUAGE:CXX>:-mno-omit-leaf-frame-pointer>
 )
 
+# -----------------------------------------------------------------------------
+# 1. Fetch GoogleTest Dependency Globally
+# -----------------------------------------------------------------------------
+include(FetchContent)
+FetchContent_Declare(
+        googletest
+        URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+)
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
+set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(googletest)
+enable_testing()
+
+# -----------------------------------------------------------------------------
+# 2. Add Project Subdirectories
+# -----------------------------------------------------------------------------
+# Build the Settler static library first
+add_subdirectory(libs/evolving_disk_state)
+# Build the main application next
+add_subdirectory(apps/wedding_cake)
+
 include_directories(include)
 
 # -----------------------------------------------------------------------------
@@ -48,12 +71,12 @@ add_executable(unit_tests
         include/wedding_cake/types.hpp
         include/wedding_cake/shallow_tree.hpp
         # Evolving Disk State Subsystem Headers
-        include/evolving_disk_state/external_feeder.hpp
-        include/evolving_disk_state/manifest_engine.hpp
-        include/evolving_disk_state/pipeline_buffer.hpp
-        include/evolving_disk_state/slice_context.hpp
-        include/evolving_disk_state/tier_orchestrator.hpp
-        include/evolving_disk_state/type_states.hpp
+        include/evolving_disk_state_old/external_feeder.hpp
+        include/evolving_disk_state_old/manifest_engine.hpp
+        include/evolving_disk_state_old/pipeline_buffer.hpp
+        include/evolving_disk_state_old/slice_context.hpp
+        include/evolving_disk_state_old/tier_orchestrator.hpp
+        include/evolving_disk_state_old/type_states.hpp
 )
 
 target_include_directories(unit_tests PRIVATE include)

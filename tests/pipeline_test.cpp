@@ -11,12 +11,12 @@
 #include <condition_variable>
 
 // The 6 exact headers of evolving_disk_state
-#include "evolving_disk_state/external_feeder.hpp"
-#include "evolving_disk_state/manifest_engine.hpp"
-#include "evolving_disk_state/pipeline_buffer.hpp"
-#include "evolving_disk_state/slice_context.hpp"
-#include "evolving_disk_state/tier_orchestrator.hpp"
-#include "evolving_disk_state/type_states.hpp"
+#include "evolving_disk_state_old/external_feeder.hpp"
+#include "evolving_disk_state_old/manifest_engine.hpp"
+#include "evolving_disk_state_old/pipeline_buffer.hpp"
+#include "evolving_disk_state_old/slice_context.hpp"
+#include "evolving_disk_state_old/tier_orchestrator.hpp"
+#include "evolving_disk_state_old/type_states.hpp"
 
 namespace {
 
