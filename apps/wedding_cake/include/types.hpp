@@ -102,8 +102,9 @@ private:
     std::span<const uint8_t> bytes_;
 };
 
+template<size_t HashBytesCount>
 struct HashLocalPresentation {
-    std::vector<uint8_t> hash_bytes;
+    std::array<uint8_t, HashBytesCount> hash_bytes;
     LocalPi presentation_index;
 
     [[nodiscard]] HashView view() const noexcept {

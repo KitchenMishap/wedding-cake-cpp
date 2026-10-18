@@ -31,102 +31,129 @@ public:
         }
         return bytes;
     }
+
+    template <size_t HashBytesCount>
+    std::array<uint8_t, HashBytesCount> make_random_hash_array() {
+        std::array<uint8_t, HashBytesCount> bytes;
+        for (size_t i = 0; i < HashBytesCount; ++i) {
+            bytes[i] = static_cast<uint8_t>(rng_() & 0xFF);
+        }
+        return bytes;
+    }
 };
 
 // -----------------------------------------------------------------------------
-// Unit Tests
+// Templated Test Helper Functions (Compile-time Strategy)
 // -----------------------------------------------------------------------------
 
-// Test sizes: 20 bytes (160-bit), 32 bytes (256-bit), 64 bytes (512-bit)
-const std::array<size_t, 3> TEST_HASH_SIZES = {20, 32, 64};
+template <size_t HashBytesCount>
+void RunTestEmptyTree(DeterministicHashGenerator& gen) {
+    for (size_t ls_tail_bits = 0; ls_tail_bits <= 16; ls_tail_bits += 4) {
+        std::vector<HashLocalPresentation<HashBytesCount>> empty_entries;
+
+        ShallowTree<HashBytesCount> st(empty_entries, ls_tail_bits, REASSURANCE_BYTES_COUNT);
+
+        auto search_hash_bytes = gen.make_random_hash_array<HashBytesCount>();
+        HashView search_hash(search_hash_bytes);
+
+        EXPECT_EQ(st.lookup_hash_unique_reassured_candidate(search_hash), LOCAL_PI_NO_MATCH)
+            << "Lookup should return NO_MATCH for an empty tree (Hash size: " << HashBytesCount << "B)";
+    }
+}
+
+template <size_t HashBytesCount>
+void RunTestSingleHashAbsent(DeterministicHashGenerator& gen) {
+    for (size_t ls_tail_bits = 0; ls_tail_bits <= 16; ls_tail_bits += 4) {
+        auto inserted_hash = gen.make_random_hash_array<HashBytesCount>();
+
+        std::vector<HashLocalPresentation<HashBytesCount>> entries = { {inserted_hash, LocalPi(0)} };
+        ShallowTree<HashBytesCount> st(entries, ls_tail_bits, REASSURANCE_BYTES_COUNT);
+
+        auto missing_hash = gen.make_random_hash_array<HashBytesCount>();
+        EXPECT_EQ(st.lookup_hash_unique_reassured_candidate(HashView(missing_hash)), LOCAL_PI_NO_MATCH)
+            << "Expected NO_MATCH for absent hash (Hash size: " << HashBytesCount << "B)";
+    }
+}
+
+template <size_t HashBytesCount>
+void RunTestSingleHashPresent(DeterministicHashGenerator& gen) {
+    for (size_t ls_tail_bits = 0; ls_tail_bits <= 16; ls_tail_bits += 4) {
+        auto hash = gen.make_random_hash_array<HashBytesCount>();
+
+        std::vector<HashLocalPresentation<HashBytesCount>> entries = { {hash, LocalPi(0)} };
+        // Pass HashBytes as the 3rd argument
+        ShallowTree<HashBytesCount> st(entries, ls_tail_bits, REASSURANCE_BYTES_COUNT);
+
+        EXPECT_EQ(st.lookup_hash_unique_reassured_candidate(HashView(hash)), LocalPi(0))
+            << "Expected presentation index 0 for present hash (Hash size: " << HashBytesCount << "B)";
+    }
+}
+
+template <size_t HashBytesCount>
+void RunTest65535Hashes(DeterministicHashGenerator& gen) {
+    const size_t count = 65535;
+    const size_t ls_tail_bits = 8; // 1 byte already handled by LsTailIndex
+
+    std::vector<HashLocalPresentation<HashBytesCount>> presentation_array;
+    presentation_array.reserve(count);
+
+    for (size_t i = 0; i < count; ++i) {
+        presentation_array.push_back({
+            gen.make_random_hash_array<HashBytesCount>(),
+            LocalPi(i)
+        });
+    }
+    auto working_array = presentation_array; // Copy for tree generation
+    ShallowTree<HashBytesCount> st(working_array, ls_tail_bits, REASSURANCE_BYTES_COUNT);
+
+    // Verify all 65,535 inserted hashes match their presentation indices
+    for (size_t i = 0; i < count; ++i) {
+        const auto& expected_item = presentation_array[i];
+        LocalPi local_pi = st.lookup_hash_unique_reassured_candidate(expected_item.view());
+        uint64_t found_index = local_pi.to_int();
+
+        ASSERT_NE(local_pi, LOCAL_PI_NO_MATCH)
+            << "Lookup failed for item " << i << " (Hash size: " << HashBytesCount << "B)";
+
+        EXPECT_EQ(local_pi, expected_item.presentation_index);
+        EXPECT_EQ(presentation_array[found_index].hash_bytes, expected_item.hash_bytes);
+    }
+
+    // Verify random non-existent hash returns NO_MATCH
+    auto absent_hash = gen.make_random_hash_array<HashBytesCount>();
+    EXPECT_EQ(st.lookup_hash_unique_reassured_candidate(HashView(absent_hash)), LOCAL_PI_NO_MATCH);
+}
+
+// -----------------------------------------------------------------------------
+// GoogleTest Suite Drivers
+// -----------------------------------------------------------------------------
 
 TEST(ShallowTreeTest, TestEmptyTree) {
     DeterministicHashGenerator gen;
-
-    for (size_t ls_tail_bits = 0; ls_tail_bits <= 16; ls_tail_bits += 4) {
-        for (size_t hash_bytes : TEST_HASH_SIZES) {
-            std::vector<HashLocalPresentation> empty_entries;
-
-            ShallowTree st(empty_entries, ls_tail_bits, hash_bytes, REASSURANCE_BYTES_COUNT);
-
-            auto search_hash_bytes = gen.make_random_hash(hash_bytes);
-            HashView search_hash(search_hash_bytes);
-
-            EXPECT_EQ(st.lookup_hash_unique_reassured_candidate(search_hash), LOCAL_PI_NO_MATCH)
-                << "Lookup should return NO_MATCH for an empty tree (Hash size: " << hash_bytes << "B)";
-        }
-    }
+    RunTestEmptyTree<20>(gen);
+    RunTestEmptyTree<32>(gen);
+    RunTestEmptyTree<64>(gen);
 }
 
 TEST(ShallowTreeTest, TestSingleHashPresent) {
     DeterministicHashGenerator gen;
-
-    for (size_t ls_tail_bits = 0; ls_tail_bits <= 16; ls_tail_bits += 4) {
-        for (size_t hash_bytes : TEST_HASH_SIZES) {
-            auto hash = gen.make_random_hash(hash_bytes);
-
-            std::vector<HashLocalPresentation> entries = { {hash, LocalPi(0)} };
-            ShallowTree st(entries, ls_tail_bits, hash_bytes, REASSURANCE_BYTES_COUNT);
-
-            EXPECT_EQ(st.lookup_hash_unique_reassured_candidate(HashView(hash)), LocalPi(0))
-                << "Expected presentation index 0 for present hash";
-        }
-    }
+    RunTestSingleHashPresent<20>(gen);
+    RunTestSingleHashPresent<32>(gen);
+    RunTestSingleHashPresent<64>(gen);
 }
 
 TEST(ShallowTreeTest, TestSingleHashAbsent) {
     DeterministicHashGenerator gen;
-
-    for (size_t ls_tail_bits = 0; ls_tail_bits <= 16; ls_tail_bits += 4) {
-        for (size_t hash_bytes : TEST_HASH_SIZES) {
-            auto inserted_hash = gen.make_random_hash(hash_bytes);
-
-            std::vector<HashLocalPresentation> entries = { {inserted_hash, LocalPi(0)} };
-            ShallowTree st(entries, ls_tail_bits, hash_bytes, REASSURANCE_BYTES_COUNT);
-
-            auto missing_hash = gen.make_random_hash(hash_bytes);
-            EXPECT_EQ(st.lookup_hash_unique_reassured_candidate(HashView(missing_hash)), LOCAL_PI_NO_MATCH)
-                << "Expected NO_MATCH for absent hash";
-        }
-    }
+    RunTestSingleHashAbsent<20>(gen);
+    RunTestSingleHashAbsent<32>(gen);
+    RunTestSingleHashAbsent<64>(gen);
 }
 
 TEST(ShallowTreeTest, Test65535Hashes) {
-    const size_t count = 65535;
-    const size_t ls_tail_bits = 8; // 1 byte already handled by LsTailIndex
-
     DeterministicHashGenerator gen;
-
-    for (size_t hash_bytes : TEST_HASH_SIZES) {
-        std::vector<HashLocalPresentation> presentation_array;
-        presentation_array.reserve(count);
-
-        for (size_t i = 0; i < count; ++i) {
-            presentation_array.push_back({
-                gen.make_random_hash(hash_bytes),
-                LocalPi(i)
-            });
-        }
-        auto working_array = presentation_array; // Copy for tree generation
-        ShallowTree st(working_array, ls_tail_bits, hash_bytes, REASSURANCE_BYTES_COUNT);
-
-        // Verify all 65,535 inserted hashes match their presentation indices
-        for (size_t i = 0; i < count; ++i) {
-            const auto& expected_item = presentation_array[i];
-            LocalPi local_pi = st.lookup_hash_unique_reassured_candidate(expected_item.view());
-            uint64_t found_index = local_pi.to_int();
-
-            ASSERT_NE(local_pi, LOCAL_PI_NO_MATCH)
-                << "Lookup failed for item " << i << " (Hash size: " << hash_bytes << "B)";
-
-            EXPECT_EQ(local_pi, expected_item.presentation_index);
-            EXPECT_EQ(presentation_array[found_index].hash_bytes, expected_item.hash_bytes);
-        }
-
-        // Verify random non-existent hash returns NO_MATCH
-        auto absent_hash = gen.make_random_hash(hash_bytes);
-        EXPECT_EQ(st.lookup_hash_unique_reassured_candidate(HashView(absent_hash)), LOCAL_PI_NO_MATCH);
-    }
+    RunTest65535Hashes<20>(gen);
+    RunTest65535Hashes<32>(gen);
+    RunTest65535Hashes<64>(gen);
 }
 
 } // namespace wedding_cake

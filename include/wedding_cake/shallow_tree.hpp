@@ -63,15 +63,16 @@ struct Node {
 // -----------------------------------------------------------------------------
 
 // Strategy A: Standard Sort O(N log N)
+template <size_t HashBytesCount>
 std::array<size_t, 256> sort_partition_by_byte(
-    std::span<HashLocalPresentation> input,
+    std::span<HashLocalPresentation<HashBytesCount>> input,
     size_t byte_index)
 {
     // Uses C++ features "ranges" and "projection lambdas".
     // Ranges lets us specify a whole container rather than begin(), end()
     // Projection lambda allows us to extract the item we're sorting on, rather than
     // writing a custom comparison
-    std::ranges::sort(input, {}, [byte_index](const HashLocalPresentation& hp) {
+    std::ranges::sort(input, {}, [byte_index](const HashLocalPresentation<HashBytesCount>& hp) {
         return hp.hash_bytes[byte_index];
     });
 
@@ -84,10 +85,11 @@ std::array<size_t, 256> sort_partition_by_byte(
 
 // Strategy B: Linear Bucket Partition O(N)
 // (but Strategy A wins for small inputs: no heap allocation, and cache locality)
+template <size_t HashBytesCount>
 std::array<size_t, 256> bucket_partition_by_byte(
-    std::span<HashLocalPresentation> input,
+    std::span<HashLocalPresentation<HashBytesCount>> input,
     size_t byte_index,
-    std::vector<HashLocalPresentation>& scratch_buffer)
+    std::vector<HashLocalPresentation<HashBytesCount>>& scratch_buffer)
 {
     std::array<size_t, 256> counts{};
     for (const auto& item : input) {
@@ -114,6 +116,7 @@ std::array<size_t, 256> bucket_partition_by_byte(
 // -----------------------------------------------------------------------------
 // ShallowTree Engine Class
 // -----------------------------------------------------------------------------
+template <size_t HashBytesCount>
 class ShallowTree {
 public:
     ShallowTree() = default;
@@ -122,22 +125,20 @@ public:
     // Standard C++ idiom: Mutates the input span in-place during recursive partitioning.
     // ls_tail_bits_count is an optionally non-zero number of least significant bits of the hash
     // that are not used by the shallow tree. Specifying non-zero allows you to handle those externally.
-    ShallowTree(std::span<HashLocalPresentation> input,
+    ShallowTree(std::span<HashLocalPresentation<HashBytesCount>> input,
                 size_t ls_tail_bits_count,
-                size_t total_hash_bytes,
                 size_t reassurance_bytes_count)
-        : total_hash_bytes_(total_hash_bytes),
-          ls_tail_bits_count_(ls_tail_bits_count),
+        : ls_tail_bits_count_(ls_tail_bits_count),
           reassurance_bytes_count_(reassurance_bytes_count),
           hash_count_(input.size())
     {
         // Calculate whole bytes touched/handled by the LS tail bits
         size_t handled_bytes = (ls_tail_bits_count + 7) / 8;
 
-        if (total_hash_bytes_ < 1 || total_hash_bytes_ > 64) {
+        if (HashBytesCount < 1 || HashBytesCount > 64) {
             throw std::invalid_argument("Supported hash size is 1 to 64 bytes (up to 512-bit)");
         }
-        if (handled_bytes > total_hash_bytes_) {
+        if (handled_bytes > HashBytesCount) {
             throw std::invalid_argument("ls_tail_bits covers more bytes than the total hash size");
         }
 
@@ -147,7 +148,7 @@ public:
 
         // Bitmask tracking available bytes (bit b = 1 means unused)
         // Up to 64 bytes fit naturally in uint64_t
-        uint64_t unused_mask = (total_hash_bytes_ == 64) ? ~0ULL : ((1ULL << total_hash_bytes_) - 1);
+        uint64_t unused_mask = (HashBytesCount == 64) ? ~0ULL : ((1ULL << HashBytesCount) - 1);
 
         // Clear bits for handled LSB tail bytes
         for (size_t b = 0; b < handled_bytes; ++b) {
@@ -161,7 +162,7 @@ public:
         }
 
         // Single buffer allocation reused throughout recursive steps
-        std::vector<HashLocalPresentation> scratch_buffer(input.size());
+        std::vector<HashLocalPresentation<HashBytesCount>> scratch_buffer(input.size());
 
         root_slot_.next_node = recurse_generate_node(input, unused_mask, handled_bytes, scratch_buffer);
     }
@@ -172,7 +173,7 @@ public:
     // The result is "reassured" by a few spare bytes of checking.
     // In the wider context of wedding_cake, this fn is typically only used for testing.
     [[nodiscard]] LocalPi lookup_hash_unique_reassured_candidate(HashView target_hash) const {
-        if (target_hash.size() != total_hash_bytes_ || root_slot_.is_empty()) {
+        if (target_hash.size() != HashBytesCount || root_slot_.is_empty()) {
             return LOCAL_PI_NO_MATCH;
         }
 
@@ -181,7 +182,7 @@ public:
 
         // Bitmask tracking available bytes (bit b = 1 means unused)
         // Up to 64 bytes fit naturally in uint64_t
-        uint64_t unused_mask = (total_hash_bytes_ == 64) ? ~0ULL : ((1ULL << total_hash_bytes_) - 1);
+        uint64_t unused_mask = (HashBytesCount == 64) ? ~0ULL : ((1ULL << HashBytesCount) - 1);
 
         // Clear bits for handled LSB tail bytes
         for (size_t b = 0; b < handled_bytes; ++b) {
@@ -196,7 +197,7 @@ public:
 
                 // We must check the reassurance bytes. These are (in order) the first few bytes not yet examined
                 size_t index = 0;
-                for (size_t byteIndex = 0; byteIndex < total_hash_bytes_; byteIndex++) {
+                for (size_t byteIndex = 0; byteIndex < HashBytesCount; byteIndex++) {
                     if ((unused_mask & (1ULL << byteIndex)) == 0) {
                         continue; // Skip used byte
                     }
@@ -262,21 +263,20 @@ public:
     [[nodiscard]] size_t hash_count() const noexcept { return hash_count_; }
 
 private:
-    size_t total_hash_bytes_{0};
     size_t ls_tail_bits_count_{0};
     size_t reassurance_bytes_count_{0};
     size_t hash_count_{0};
     Slot root_slot_;
 
     // Creates a single leaf node
-    std::unique_ptr<Node> make_leaf_node(const HashLocalPresentation& hp, uint64_t unused_mask, size_t level_depth) {
+    std::unique_ptr<Node> make_leaf_node(const HashLocalPresentation<HashBytesCount>& hp, uint64_t unused_mask, size_t level_depth) {
         auto leaf = std::make_unique<LeafNode>();
         leaf->presentation_index = hp.presentation_index;
 
         // Reassurance bytes are, in order, the bytes that have not yet been examined
         leaf->reassurance_hash_bytes.resize(reassurance_bytes_count_);
         size_t index = 0;
-        for (size_t b = 0; b < total_hash_bytes_; ++b) {
+        for (size_t b = 0; b < HashBytesCount; ++b) {
             if ( (unused_mask & (1ULL << b)) == 0 ) {
                 continue;   // Byte b has already been used, can't be used for reassurance
             }
@@ -299,10 +299,10 @@ private:
 
     // Recursive entropy-based partitioning
     std::unique_ptr<Node> recurse_generate_node(
-          std::span<HashLocalPresentation> input,
+          std::span<HashLocalPresentation<HashBytesCount>> input,
           uint64_t unused_mask,
           size_t level_depth,
-          std::vector<HashLocalPresentation>& scratch_buffer)
+          std::vector<HashLocalPresentation<HashBytesCount>>& scratch_buffer)
     {
         if (input.size() < 2) {
             throw std::logic_error("recurse_generate_node called with fewer than 2 elements");
@@ -317,7 +317,7 @@ private:
         double max_entropy = std::numeric_limits<double>::lowest(); // Safe for positive or negative metrics
         size_t best_byte_index = 0;
 
-        for (size_t b = 0; b < total_hash_bytes_; ++b) {
+        for (size_t b = 0; b < HashBytesCount; ++b) {
             if ((unused_mask & (1ULL << b)) != 0) {
                 double entropy = calculate_byte_entropy(input, b);
                 if (entropy > max_entropy) {
@@ -367,7 +367,7 @@ private:
     }
 
     // Shannon Entropy Calculation for a single byte index across the input span
-    static double calculate_byte_entropy(std::span<const HashLocalPresentation> input, size_t byte_index) {
+    static double calculate_byte_entropy(std::span<const HashLocalPresentation<HashBytesCount>> input, size_t byte_index) {
         std::array<size_t, 256> counts{};
         for (const auto& item : input) {
             counts[item.hash_bytes[byte_index]]++;
