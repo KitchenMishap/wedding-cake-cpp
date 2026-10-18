@@ -103,13 +103,13 @@ private:
 };
 
 template<size_t HashBytesCount>
-struct Hash {
+struct HashBytes {
     std::array<uint8_t, HashBytesCount> bytes;
 };
 
 template<size_t HashBytesCount>
 struct HashLocalPresentation {
-    Hash<HashBytesCount> hash;
+    HashBytes<HashBytesCount> hash;
     LocalPi presentation_index;
 
     [[nodiscard]] HashView view() const noexcept {
@@ -119,7 +119,7 @@ struct HashLocalPresentation {
 
 template<size_t HashBytesCount>
 struct HashGlobalPresentation {
-    Hash<HashBytesCount> hash;
+    HashBytes<HashBytesCount> hash;
     GlobalPi presentation_index;
 
     [[nodiscard]] HashView view() const noexcept {

@@ -7,6 +7,10 @@
 #include <memory>
 #include <stdexcept>
 
+namespace wedding_cake {
+
+constexpr size_t SackSize = 65535;
+
 template <size_t HashBytesCount>
 struct Store {
     std::filesystem::path base_path_;
@@ -23,6 +27,8 @@ inline void Store<HashBytesCount>::CreateEmpty(const std::filesystem::path& base
     base_path_ = base_path;
     std::filesystem::create_directory(base_path_);
     tiers.clear();
-    tiers.emplace_back(std::make_unique<Tier0<HashBytesCount>>(CreateNewOnDisk{}, base_path_));
+    tiers.emplace_back(std::make_unique<Tier0<HashBytesCount>>(CreateNewOnDisk{}, base_path_, SackSize));
     tiers[0].get()->new_origin_evolver(0);
+}
+
 }
