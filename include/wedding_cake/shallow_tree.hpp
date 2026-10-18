@@ -93,7 +93,7 @@ std::array<size_t, 256> bucket_partition_by_byte(
 {
     std::array<size_t, 256> counts{};
     for (const auto& item : input) {
-        counts[item.hash_bytes[byte_index]]++;
+        counts[item.hash.bytes[byte_index]]++;
     }
 
     std::array<size_t, 256> offsets{};
@@ -104,7 +104,7 @@ std::array<size_t, 256> bucket_partition_by_byte(
 
     std::array<size_t, 256> running_offsets = offsets;
     for (const auto& item : input) {
-        uint8_t byte_val = item.hash_bytes[byte_index];
+        uint8_t byte_val = item.hash.bytes[byte_index];
         scratch_buffer[running_offsets[byte_val]++] = item;
     }
 
@@ -280,7 +280,7 @@ private:
             if ( (unused_mask & (1ULL << b)) == 0 ) {
                 continue;   // Byte b has already been used, can't be used for reassurance
             }
-            leaf->reassurance_hash_bytes[index] = hp.hash_bytes[b];
+            leaf->reassurance_hash_bytes[index] = hp.hash.bytes[b];
             index++;
             if ( index >= reassurance_bytes_count_ ) {
                 break;
@@ -370,7 +370,7 @@ private:
     static double calculate_byte_entropy(std::span<const HashLocalPresentation<HashBytesCount>> input, size_t byte_index) {
         std::array<size_t, 256> counts{};
         for (const auto& item : input) {
-            counts[item.hash_bytes[byte_index]]++;
+            counts[item.hash.bytes[byte_index]]++;
         }
 
         double total = static_cast<double>(input.size());

@@ -103,22 +103,27 @@ private:
 };
 
 template<size_t HashBytesCount>
+struct Hash {
+    std::array<uint8_t, HashBytesCount> bytes;
+};
+
+template<size_t HashBytesCount>
 struct HashLocalPresentation {
-    std::array<uint8_t, HashBytesCount> hash_bytes;
+    Hash<HashBytesCount> hash;
     LocalPi presentation_index;
 
     [[nodiscard]] HashView view() const noexcept {
-        return HashView(hash_bytes);
+        return HashView(hash.bytes);
     }
 };
 
 template<size_t HashBytesCount>
 struct HashGlobalPresentation {
-    std::array<uint8_t, HashBytesCount> hash_bytes;
+    Hash<HashBytesCount> hash;
     GlobalPi presentation_index;
 
     [[nodiscard]] HashView view() const noexcept {
-        return HashView(hash_bytes);
+        return HashView(hash.bytes);
     }
 };
 

@@ -116,7 +116,7 @@ void RunTest65535Hashes(DeterministicHashGenerator& gen) {
             << "Lookup failed for item " << i << " (Hash size: " << HashBytesCount << "B)";
 
         EXPECT_EQ(local_pi, expected_item.presentation_index);
-        EXPECT_EQ(presentation_array[found_index].hash_bytes, expected_item.hash_bytes);
+        EXPECT_EQ(presentation_array[found_index].hash.bytes, expected_item.hash.bytes);
     }
 
     // Verify random non-existent hash returns NO_MATCH
