@@ -10,7 +10,7 @@
 #include <span>
 #include <stdexcept>
 
-#include "types.hpp"
+#include "../../apps/wedding_cake/include/types.hpp"
 
 // ShallowTree is an in-memory heap based data structure encoding a set of hash/LocalPi pairs for
 // later fast trie lookup, mapping hash's to LocalPi's. (Pi means Presentation Index).
@@ -64,14 +64,14 @@ struct Node {
 
 // Strategy A: Standard Sort O(N log N)
 std::array<size_t, 256> sort_partition_by_byte(
-    std::span<HashPresentation> input,
+    std::span<HashLocalPresentation> input,
     size_t byte_index)
 {
     // Uses C++ features "ranges" and "projection lambdas".
     // Ranges lets us specify a whole container rather than begin(), end()
     // Projection lambda allows us to extract the item we're sorting on, rather than
     // writing a custom comparison
-    std::ranges::sort(input, {}, [byte_index](const HashPresentation& hp) {
+    std::ranges::sort(input, {}, [byte_index](const HashLocalPresentation& hp) {
         return hp.hash_bytes[byte_index];
     });
 
@@ -85,9 +85,9 @@ std::array<size_t, 256> sort_partition_by_byte(
 // Strategy B: Linear Bucket Partition O(N)
 // (but Strategy A wins for small inputs: no heap allocation, and cache locality)
 std::array<size_t, 256> bucket_partition_by_byte(
-    std::span<HashPresentation> input,
+    std::span<HashLocalPresentation> input,
     size_t byte_index,
-    std::vector<HashPresentation>& scratch_buffer)
+    std::vector<HashLocalPresentation>& scratch_buffer)
 {
     std::array<size_t, 256> counts{};
     for (const auto& item : input) {
@@ -122,7 +122,7 @@ public:
     // Standard C++ idiom: Mutates the input span in-place during recursive partitioning.
     // ls_tail_bits_count is an optionally non-zero number of least significant bits of the hash
     // that are not used by the shallow tree. Specifying non-zero allows you to handle those externally.
-    ShallowTree(std::span<HashPresentation> input,
+    ShallowTree(std::span<HashLocalPresentation> input,
                 size_t ls_tail_bits_count,
                 size_t total_hash_bytes,
                 size_t reassurance_bytes_count)
@@ -161,7 +161,7 @@ public:
         }
 
         // Single buffer allocation reused throughout recursive steps
-        std::vector<HashPresentation> scratch_buffer(input.size());
+        std::vector<HashLocalPresentation> scratch_buffer(input.size());
 
         root_slot_.next_node = recurse_generate_node(input, unused_mask, handled_bytes, scratch_buffer);
     }
@@ -269,7 +269,7 @@ private:
     Slot root_slot_;
 
     // Creates a single leaf node
-    std::unique_ptr<Node> make_leaf_node(const HashPresentation& hp, uint64_t unused_mask, size_t level_depth) {
+    std::unique_ptr<Node> make_leaf_node(const HashLocalPresentation& hp, uint64_t unused_mask, size_t level_depth) {
         auto leaf = std::make_unique<LeafNode>();
         leaf->presentation_index = hp.presentation_index;
 
@@ -299,10 +299,10 @@ private:
 
     // Recursive entropy-based partitioning
     std::unique_ptr<Node> recurse_generate_node(
-          std::span<HashPresentation> input,
+          std::span<HashLocalPresentation> input,
           uint64_t unused_mask,
           size_t level_depth,
-          std::vector<HashPresentation>& scratch_buffer)
+          std::vector<HashLocalPresentation>& scratch_buffer)
     {
         if (input.size() < 2) {
             throw std::logic_error("recurse_generate_node called with fewer than 2 elements");
@@ -367,7 +367,7 @@ private:
     }
 
     // Shannon Entropy Calculation for a single byte index across the input span
-    static double calculate_byte_entropy(std::span<const HashPresentation> input, size_t byte_index) {
+    static double calculate_byte_entropy(std::span<const HashLocalPresentation> input, size_t byte_index) {
         std::array<size_t, 256> counts{};
         for (const auto& item : input) {
             counts[item.hash_bytes[byte_index]]++;

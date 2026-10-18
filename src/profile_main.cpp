@@ -2,7 +2,7 @@
 #include <random>
 
 #include "../include/wedding_cake/shallow_tree.hpp"
-#include "../include/wedding_cake/types.hpp"
+#include "../apps/wedding_cake/include/types.hpp"
 
 // Fixed-seed PRNG for deterministic, reproducible test runs
 class DeterministicHashGenerator {

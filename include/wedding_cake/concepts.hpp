@@ -5,7 +5,7 @@
 #include <optional>
 #include <vector>
 
-#include "types.hpp"
+#include "../../apps/wedding_cake/include/types.hpp"
 
 namespace wedding_cake {
 

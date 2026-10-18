@@ -102,9 +102,18 @@ private:
     std::span<const uint8_t> bytes_;
 };
 
-struct HashPresentation {
+struct HashLocalPresentation {
     std::vector<uint8_t> hash_bytes;
     LocalPi presentation_index;
+
+    [[nodiscard]] HashView view() const noexcept {
+        return HashView(hash_bytes);
+    }
+};
+
+struct HashGlobalPresentation {
+    std::vector<uint8_t> hash_bytes;
+    GlobalPi presentation_index;
 
     [[nodiscard]] HashView view() const noexcept {
         return HashView(hash_bytes);

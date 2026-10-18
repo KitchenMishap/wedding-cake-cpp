@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-#include "wedding_cake/types.hpp"
+#include "../../apps/wedding_cake/include/types.hpp"
 
 namespace wedding_cake {
 

@@ -68,7 +68,7 @@ add_executable(unit_tests
         tests/prefix_entries_file_test.cpp
         tests/prefix_entries_path_test.cpp
         tests/pipeline_test.cpp
-        include/wedding_cake/types.hpp
+        apps/wedding_cake/include/types.hpp
         include/wedding_cake/shallow_tree.hpp
         # Evolving Disk State Subsystem Headers
         include/evolving_disk_state_old/external_feeder.hpp

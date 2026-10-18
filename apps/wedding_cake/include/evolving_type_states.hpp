@@ -1,5 +1,6 @@
 #pragma once
 
+#include "types.hpp"
 #include "evolving_disk_state/evolver_type_state.hpp"
 
 // Evolution:
@@ -13,8 +14,6 @@ class Sack : public evolving_disk_state::EvolverOrigin {
 public:
     class CreateNewOnDisk{};        // Tag type to pass to constructor to indicate "create new on disk"
     class LoadExistingFromDisk{};   // Tag type to pass to constructor to indicate "load existing from disk"
-
-
 
     // Because an evolutionary path can start with a Sack, we can construct one "out of the blue"
     Sack(CreateNewOnDisk, const evolving_disk_state::Tier& parent_tier, const uint64_t start_offset) :
@@ -36,6 +35,9 @@ public:
     Sack(const Sack&) = delete;
     Sack& operator=(const Sack&) = delete;
     Sack(Sack&&) = default;
+
+    // Duplicates not allowed nor checked
+    void insert_hash_presentation(wedding_cake::HashGlobalPresentation);
 
     // TypeState transition (evolution): Consumes 'this' (Sack) and returns a SealedSack
     [[nodiscard]] SealedSack evolve_to_SealedSack() &&;

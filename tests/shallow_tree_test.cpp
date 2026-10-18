@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <limits>
 
-#include "../include/wedding_cake/types.hpp"
+#include "../apps/wedding_cake/include/types.hpp"
 
 // The code we are testing
 #include "../include/wedding_cake/shallow_tree.hpp"
@@ -45,7 +45,7 @@ TEST(ShallowTreeTest, TestEmptyTree) {
 
     for (size_t ls_tail_bits = 0; ls_tail_bits <= 16; ls_tail_bits += 4) {
         for (size_t hash_bytes : TEST_HASH_SIZES) {
-            std::vector<HashPresentation> empty_entries;
+            std::vector<HashLocalPresentation> empty_entries;
 
             ShallowTree st(empty_entries, ls_tail_bits, hash_bytes, REASSURANCE_BYTES_COUNT);
 
@@ -65,7 +65,7 @@ TEST(ShallowTreeTest, TestSingleHashPresent) {
         for (size_t hash_bytes : TEST_HASH_SIZES) {
             auto hash = gen.make_random_hash(hash_bytes);
 
-            std::vector<HashPresentation> entries = { {hash, LocalPi(0)} };
+            std::vector<HashLocalPresentation> entries = { {hash, LocalPi(0)} };
             ShallowTree st(entries, ls_tail_bits, hash_bytes, REASSURANCE_BYTES_COUNT);
 
             EXPECT_EQ(st.lookup_hash_unique_reassured_candidate(HashView(hash)), LocalPi(0))
@@ -81,7 +81,7 @@ TEST(ShallowTreeTest, TestSingleHashAbsent) {
         for (size_t hash_bytes : TEST_HASH_SIZES) {
             auto inserted_hash = gen.make_random_hash(hash_bytes);
 
-            std::vector<HashPresentation> entries = { {inserted_hash, LocalPi(0)} };
+            std::vector<HashLocalPresentation> entries = { {inserted_hash, LocalPi(0)} };
             ShallowTree st(entries, ls_tail_bits, hash_bytes, REASSURANCE_BYTES_COUNT);
 
             auto missing_hash = gen.make_random_hash(hash_bytes);
@@ -98,7 +98,7 @@ TEST(ShallowTreeTest, Test65535Hashes) {
     DeterministicHashGenerator gen;
 
     for (size_t hash_bytes : TEST_HASH_SIZES) {
-        std::vector<HashPresentation> presentation_array;
+        std::vector<HashLocalPresentation> presentation_array;
         presentation_array.reserve(count);
 
         for (size_t i = 0; i < count; ++i) {
