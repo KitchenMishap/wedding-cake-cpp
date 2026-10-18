@@ -11,7 +11,6 @@ public:
     Tier0(CreateNewOnDisk, const std::filesystem::path& base_path)
     : Tier(base_path, 0)
     {
-        std::filesystem::create_directory(path());
     }
 
     Tier0(LoadFromDisk, const std::filesystem::path& base_path)

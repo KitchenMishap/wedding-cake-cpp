@@ -22,3 +22,9 @@ target_link_libraries(wedding_cake PRIVATE evolving_disk_state)
 
 # 3. Application-specific include directories
 target_include_directories(wedding_cake PRIVATE include)
+
+# 4. Enable testing and add test targets
+include(CTest)
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()

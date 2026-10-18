@@ -34,7 +34,7 @@ enable_testing()
 # -----------------------------------------------------------------------------
 # 2. Add Project Subdirectories
 # -----------------------------------------------------------------------------
-# Build the Settler static library first
+# Build the Evolving_Disk_State static library first
 add_subdirectory(libs/evolving_disk_state)
 # Build the main application next
 add_subdirectory(apps/wedding_cake)

@@ -6,6 +6,15 @@
 
 namespace evolving_disk_state {
 
+// Move-Only Concept
+// Objects derived from Evolver are TypeStates (each possible state is represented by a separate type)
+// As such, TypeStates (and hence derived classes of Evolver) must be move-only.
+template <typename T>
+concept MoveOnly = !std::is_abstract_v<T>
+                && std::is_move_constructible_v<T>
+                && !std::is_copy_constructible_v<T>
+                && !std::is_copy_assignable_v<T>;
+
 // Base class for all Evolver objects
 // An Evolver is an object somewhere on a path of evolution
 class Evolver {
@@ -26,8 +35,8 @@ protected:
     [[nodiscard]] virtual std::filesystem::path tag() const noexcept = 0;
 
     // An Evolver object is always contained within a Tier and does not move between tiers
-    const evolving_disk_state::Tier& parent_tier_;
-    uint64_t start_offset_{0};
+    const Tier& parent_tier_;
+    const uint64_t start_offset_;
 };
 
 // A path of evolution starts with an origin

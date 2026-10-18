@@ -3,6 +3,9 @@
 #include "tiers.hpp"
 
 #include <vector>
+#include <filesystem>
+#include <memory>
+#include <stdexcept>
 
 struct Store {
     std::filesystem::path base_path_;
