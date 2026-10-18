@@ -8,13 +8,15 @@
 
 class SealedSack;
 
+class CreateNewOnDisk{};        // Tag type to pass to constructor to indicate "create new on disk"
+class LoadExistingFromDisk{};   // Tag type to pass to constructor to indicate "load existing from disk"
+
+template<size_t HashBytesCount>
 class Sack : public evolving_disk_state::EvolverOrigin {
+
     static constexpr std::string_view TAG = "ST00_Sack";
 
 public:
-    class CreateNewOnDisk{};        // Tag type to pass to constructor to indicate "create new on disk"
-    class LoadExistingFromDisk{};   // Tag type to pass to constructor to indicate "load existing from disk"
-
     // Because an evolutionary path can start with a Sack, we can construct one "out of the blue"
     Sack(CreateNewOnDisk, const evolving_disk_state::Tier& parent_tier, const uint64_t start_offset) :
         EvolverOrigin(CreateOnDisk(), parent_tier, start_offset, TAG)
@@ -37,7 +39,7 @@ public:
     Sack(Sack&&) = default;
 
     // Duplicates not allowed nor checked
-    void insert_hash_presentation(wedding_cake::HashGlobalPresentation);
+    void insert_hash_presentation(wedding_cake::HashGlobalPresentation<HashBytesCount>);
 
     // TypeState transition (evolution): Consumes 'this' (Sack) and returns a SealedSack
     [[nodiscard]] SealedSack evolve_to_SealedSack() &&;
@@ -47,8 +49,7 @@ protected:
         return TAG;
     }
 };
-
-static_assert(evolving_disk_state::MoveOnly<Sack>, "Sack must be move-only!");
+static_assert(evolving_disk_state::MoveOnly<Sack<32>>, "Sack must be move-only!");
 
 class SealedSack : public evolving_disk_state::EvolverDestiny {
     static constexpr std::string_view TAG = "ST01_SealedSack";

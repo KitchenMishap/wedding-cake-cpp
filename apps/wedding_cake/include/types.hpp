@@ -112,8 +112,9 @@ struct HashLocalPresentation {
     }
 };
 
+template<size_t HashBytesCount>
 struct HashGlobalPresentation {
-    std::vector<uint8_t> hash_bytes;
+    std::array<uint8_t, HashBytesCount> hash_bytes;
     GlobalPi presentation_index;
 
     [[nodiscard]] HashView view() const noexcept {
