@@ -21,6 +21,8 @@ namespace wedding_cake {
         EXPECT_TRUE(std::filesystem::exists(temp_path / "Tier0" / "Offset_0"));
         EXPECT_TRUE(std::filesystem::exists(temp_path / "Tier0" / "Offset_0" / "ST00_Sack"));
 
+        EXPECT_TRUE(store.ReverseLookupCandidate(HashBytes<HashBytesCount>{}) == GLOBAL_PI_NO_MATCH);
+
         // Clean up directory after a successful test run
         std::filesystem::remove_all(temp_path);
     }

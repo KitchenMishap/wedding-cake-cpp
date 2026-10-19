@@ -108,6 +108,11 @@ struct HashBytes {
 };
 
 template<size_t HashBytesCount>
+bool operator<(const HashBytes<HashBytesCount>& lhs, const HashBytes<HashBytesCount>& rhs) {
+    return std::lexicographical_compare(lhs.bytes.begin(), lhs.bytes.end(), rhs.bytes.begin(), rhs.bytes.end());
+}
+
+template<size_t HashBytesCount>
 struct HashLocalPresentation {
     HashBytes<HashBytesCount> hash;
     LocalPi presentation_index;

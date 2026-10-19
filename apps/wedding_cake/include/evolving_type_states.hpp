@@ -56,8 +56,11 @@ public:
     // Satisfy SubStoreConcept
     [[nodiscard]] uint64_t Count() const {return hashes_.size();}
     [[nodiscard]] PiOffset Offset() const {return PiOffset(start_offset());}
-    [[nodiscard]] std::optional<HashBytes<HashBytesCount>> ForwardLookup(const GlobalPi gpi) const
-        {return hashes_[(gpi - Offset()).to_int()];}
+    [[nodiscard]] std::optional<HashBytes<HashBytesCount>> ForwardLookup(const GlobalPi gpi) const {
+        auto local_pi_int = (gpi - Offset()).to_int();
+        assert(hashes_.size() > local_pi_int && "Out of bounds hashes_ vector access");
+        return hashes_[local_pi_int];
+    }
     [[nodiscard]] GlobalPi ReverseLookupCandidate(HashBytes<HashBytesCount> hash) const {
         auto it = hash_to_local_pi_.find(hash);
         if (it != hash_to_local_pi_.end()) {

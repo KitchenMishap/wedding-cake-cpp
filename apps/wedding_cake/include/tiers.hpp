@@ -16,6 +16,7 @@ public:
     ~TierBase() override = default;
 
     [[nodiscard]] virtual std::optional<HashBytes<HashBytesCount>> ForwardLookup(GlobalPi gpi) const = 0;
+    [[nodiscard]] virtual GlobalPi ReverseLookupCandidate(HashBytes<HashBytesCount> hash) const = 0;
 };
 
 
@@ -49,7 +50,7 @@ public:
         return active_evolver_->ForwardLookup(gpi);
         // ToDo Look at other evolvers in tier
     }
-    [[nodiscard]] GlobalPi ReverseLookupCandidate(HashBytes<HashBytesCount> hash) const {
+    [[nodiscard]] GlobalPi ReverseLookupCandidate(HashBytes<HashBytesCount> hash) const override{
         return active_evolver_->ReverseLookupCandidate(hash);
         // ToDo Look at other evolvers in tier
     }
