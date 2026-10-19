@@ -17,6 +17,8 @@ public:
     // (Tier0 often uses a different evolutionary path)
     virtual std::unique_ptr<Evolver> new_origin_evolver(uint64_t start_offset) = 0;
 
+    [[nodiscard]] virtual uint64_t Count() const = 0;
+
     static std::filesystem::path evolver_folder_name(uint64_t start_offset) {
         return std::string("Offset_") + std::to_string(start_offset);
     }

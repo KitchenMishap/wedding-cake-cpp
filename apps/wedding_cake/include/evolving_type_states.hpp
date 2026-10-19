@@ -53,15 +53,19 @@ public:
     // TypeState transition (evolution): Consumes 'this' (Sack) and returns a SealedSack
     [[nodiscard]] SealedSack evolve_to_SealedSack() &&;
 
+    [[nodiscard]] uint64_t Count() const {return hashes_.size();}
+    [[nodiscard]] PiOffset Offset() const {return PiOffset(start_offset());}
+
 protected:
-    [[nodiscard]] std::filesystem::path tag() const noexcept {
+    [[nodiscard]] std::filesystem::path tag() const noexcept override {
         return TAG;
     }
 private:
-    std::vector<std::optional<HashBytes<HashBytesCount>>> hashes_;  // Optional due to gaps
-    std::map<HashBytes<HashBytesCount>, LocalPi> hash_to_local_pi_;  // Reverse lookup
+    std::vector<std::optional<HashBytes<HashBytesCount>>> hashes_;      // Optional due to gaps
+    std::map<HashBytes<HashBytesCount>, LocalPi> hash_to_local_pi_;     // Reverse lookup
 };
-static_assert(evolving_disk_state::MoveOnly<Sack<32>>, "Sack must be move-only!");
+static_assert(evolving_disk_state::MoveOnly<Sack<32>>, "Sack must be move-only");
+static_assert(SubStoreConcept<Sack<32>, 32>, "Sack must implement SubStoreConcept");
 
 template <size_t HashBytesCount>
 bool Sack<HashBytesCount>::insert_hash(HashBytes<HashBytesCount> hash) {

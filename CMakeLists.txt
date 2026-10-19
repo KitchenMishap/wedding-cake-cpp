@@ -95,7 +95,7 @@ gtest_discover_tests(unit_tests
 # -----------------------------------------------------------------------------
 add_executable(profile_shallow_tree
         src/profile_main.cpp
-        include/wedding_cake/concepts.hpp
+        apps/wedding_cake/include/concepts.hpp
         include/wedding_cake/hashes_order_file.hpp
         include/wedding_cake/prefix_entries_file.hpp
         include/wedding_cake/reader_writer_factory.hpp

@@ -7,6 +7,7 @@ add_executable(wedding_cake
         include/evolving_type_states.hpp
         include/tiers.hpp
         include/store.hpp
+        include/concepts.hpp
 )
 
 # Statically link the C++ standard library so the user doesn't need to install it
