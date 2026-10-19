@@ -53,10 +53,18 @@ public:
     // TypeState transition (evolution): Consumes 'this' (Sack) and returns a SealedSack
     [[nodiscard]] SealedSack evolve_to_SealedSack() &&;
 
+    // Satisfy SubStoreConcept
     [[nodiscard]] uint64_t Count() const {return hashes_.size();}
     [[nodiscard]] PiOffset Offset() const {return PiOffset(start_offset());}
     [[nodiscard]] std::optional<HashBytes<HashBytesCount>> ForwardLookup(const GlobalPi gpi) const
         {return hashes_[(gpi - Offset()).to_int()];}
+    [[nodiscard]] GlobalPi ReverseLookupCandidate(HashBytes<HashBytesCount> hash) const {
+        auto it = hash_to_local_pi_.find(hash);
+        if (it != hash_to_local_pi_.end()) {
+            return it->second + Offset();
+        }
+        return GLOBAL_PI_NO_MATCH;
+    }
 
 protected:
     [[nodiscard]] std::filesystem::path tag() const noexcept override {

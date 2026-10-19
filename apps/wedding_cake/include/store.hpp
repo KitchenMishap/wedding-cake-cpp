@@ -26,11 +26,16 @@ public:
         tiers_.emplace_back(std::make_unique<Tier0<HashBytesCount>>(CreateNewOnDisk{}, base_path_, SackSize));
     }
 
-    // Requirements of SubStoreConcept
+    // Satisfy SubStoreConcept
     [[nodiscard]] static PiOffset Offset() {return PiOffset{0};}  // A store always represents offset 0
     [[nodiscard]] uint64_t Count() const {return tiers_[0]->Count() + other_tiers_counts_total;}
     [[nodiscard]] std::optional<HashBytes<HashBytesCount>>ForwardLookup(const GlobalPi gpi) const {
         return tiers_[0]->ForwardLookup(gpi);
+        // ToDo Look at other tiers
+    }
+    [[nodiscard]] GlobalPi ReverseLookupCandidate(HashBytes<HashBytesCount> hash) const {
+        return tiers_[0]->ReverseLookupCandidate(hash);
+        // ToDo Look at other tiers
     }
 
 private:

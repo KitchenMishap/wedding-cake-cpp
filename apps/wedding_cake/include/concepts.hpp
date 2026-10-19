@@ -23,7 +23,7 @@ concept SubStoreConcept = requires(const T store, GlobalPi gpi, HashBytes<HashBy
     { store.Count() }  -> std::convertible_to<uint64_t>;
 
     // Candidate lookup returns a strong LocalPi candidate or LOCAL_PI_NO_MATCH
-//    { store.ReverseLookupCandidate(hash) } -> std::same_as<LocalPi>;
+    { store.ReverseLookupCandidate(hash) } -> std::same_as<GlobalPi>;
 };
 
 // ============================================================================

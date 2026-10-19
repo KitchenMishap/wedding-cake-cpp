@@ -36,10 +36,23 @@ public:
         throw std::runtime_error("Tier0::LoadFromDisk not implemented");
     }
 
-    [[nodiscard]] uint64_t Count() const override {return active_evolver_->Count();}
-    [[nodiscard]] PiOffset Offset() const {return active_evolver_->Offset();}
-    [[nodiscard]] std::optional<HashBytes<HashBytesCount>> ForwardLookup(const GlobalPi gpi) const override
-        {return active_evolver_->ForwardLookup(gpi);}
+    // Satisfy SubStoreConcept
+    [[nodiscard]] uint64_t Count() const override {
+        return active_evolver_->Count();
+        // ToDo Look at other evolvers in tier
+    }
+    [[nodiscard]] PiOffset Offset() const {
+        return active_evolver_->Offset();
+        // ToDo Are you sure?
+    }
+    [[nodiscard]] std::optional<HashBytes<HashBytesCount>> ForwardLookup(const GlobalPi gpi) const override {
+        return active_evolver_->ForwardLookup(gpi);
+        // ToDo Look at other evolvers in tier
+    }
+    [[nodiscard]] GlobalPi ReverseLookupCandidate(HashBytes<HashBytesCount> hash) const {
+        return active_evolver_->ReverseLookupCandidate(hash);
+        // ToDo Look at other evolvers in tier
+    }
 
     Tier0(const Tier0& other) = delete;
 
