@@ -7,17 +7,30 @@
 namespace wedding_cake {
 
 template <size_t HashBytesCount>
-class Tier0: public evolving_disk_state::Tier {
+class TierBase : public evolving_disk_state::Tier {
 public:
-    Tier0(CreateNewOnDisk, const std::filesystem::path& base_path, const size_t sack_size) :
-    Tier(base_path, 0)
+    TierBase(const std::filesystem::path& base_path, uint64_t start_offset)
+    : Tier(base_path, start_offset)
+    {}
+
+    ~TierBase() override = default;
+
+    [[nodiscard]] virtual std::optional<HashBytes<HashBytesCount>> ForwardLookup(GlobalPi gpi) const = 0;
+};
+
+
+template <size_t HashBytesCount>
+class Tier0: public TierBase<HashBytesCount> {
+public:
+    Tier0(CreateNewOnDisk, const std::filesystem::path& base_path, const size_t sack_size)
+    : TierBase<HashBytesCount>(base_path, 0)
     , sack_size_(sack_size)
     , active_evolver_(std::make_unique<origin_evolver_t>(CreateNewOnDisk{}, *this, PiOffset(0), sack_size_))
     {
     }
 
     Tier0(LoadExistingFromDisk, const std::filesystem::path& base_path, const size_t sack_size)
-    : Tier(base_path, 0)
+    : TierBase<HashBytesCount>(base_path, 0)
     , sack_size_(sack_size)
     {
         throw std::runtime_error("Tier0::LoadFromDisk not implemented");
@@ -25,6 +38,8 @@ public:
 
     [[nodiscard]] uint64_t Count() const override {return active_evolver_->Count();}
     [[nodiscard]] PiOffset Offset() const {return active_evolver_->Offset();}
+    [[nodiscard]] std::optional<HashBytes<HashBytesCount>> ForwardLookup(const GlobalPi gpi) const override
+        {return active_evolver_->ForwardLookup(gpi);}
 
     Tier0(const Tier0& other) = delete;
 

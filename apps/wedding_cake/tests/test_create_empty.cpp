@@ -9,13 +9,12 @@ namespace wedding_cake {
     // -----------------------------------------------------------------------------
 
     template <size_t HashBytesCount>
-    void RunTestCreateEmpty() {
+    static void RunTestCreateEmpty() {
         // Append the size to the path to keep concurrent/sequential tests isolated
         std::filesystem::path temp_path = "TempTesting_" + std::to_string(HashBytesCount);
         std::filesystem::remove_all(temp_path);
 
-        Store<HashBytesCount> store;
-        store.CreateEmpty(temp_path);
+        Store<HashBytesCount> store(CreateNewOnDisk{}, temp_path);
 
         EXPECT_TRUE(std::filesystem::exists(temp_path));
         EXPECT_TRUE(std::filesystem::exists(temp_path / "Tier0"));

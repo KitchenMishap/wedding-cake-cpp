@@ -55,6 +55,8 @@ public:
 
     [[nodiscard]] uint64_t Count() const {return hashes_.size();}
     [[nodiscard]] PiOffset Offset() const {return PiOffset(start_offset());}
+    [[nodiscard]] std::optional<HashBytes<HashBytesCount>> ForwardLookup(const GlobalPi gpi) const
+        {return hashes_[(gpi - Offset()).to_int()];}
 
 protected:
     [[nodiscard]] std::filesystem::path tag() const noexcept override {

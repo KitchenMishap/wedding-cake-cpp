@@ -16,7 +16,7 @@ namespace wedding_cake {
 template <typename T, size_t HashBytesCount>
 concept SubStoreConcept = requires(const T store, GlobalPi gpi, HashBytes<HashBytesCount> hash) {
     // Forward lookup takes GlobalPi and returns a optional hash byte-vector
-//    { store.ForwardLookup(gpi) } -> std::same_as<std::optional<std::vector<uint8_t>>>;
+    { store.ForwardLookup(gpi) } -> std::same_as<std::optional<HashBytes<HashBytesCount>>>;
 
     // Base offset and total count of presentation indices covered
     { store.Offset() } -> std::same_as<PiOffset>;
