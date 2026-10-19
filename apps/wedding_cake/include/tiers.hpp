@@ -15,6 +15,7 @@ public:
 
     ~TierBase() override = default;
 
+    virtual void insert_hash(HashBytes<HashBytesCount> hash) = 0;
     [[nodiscard]] virtual std::optional<HashBytes<HashBytesCount>> ForwardLookup(GlobalPi gpi) const = 0;
     [[nodiscard]] virtual GlobalPi ReverseLookupCandidate(HashBytes<HashBytesCount> hash) const = 0;
 };
@@ -35,6 +36,10 @@ public:
     , sack_size_(sack_size)
     {
         throw std::runtime_error("Tier0::LoadFromDisk not implemented");
+    }
+
+    void insert_hash(HashBytes<HashBytesCount> hash) override {
+        active_evolver_->insert_hash(hash);
     }
 
     // Satisfy SubStoreConcept

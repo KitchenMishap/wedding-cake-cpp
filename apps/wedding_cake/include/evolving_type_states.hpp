@@ -3,6 +3,9 @@
 #include "types.hpp"
 #include "evolving_disk_state/evolver_type_state.hpp"
 
+#include <cassert>
+#include <map>
+
 namespace wedding_cake {
 
 // Evolution:

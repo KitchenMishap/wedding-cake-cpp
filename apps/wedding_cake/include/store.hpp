@@ -26,6 +26,10 @@ public:
         tiers_.emplace_back(std::make_unique<Tier0<HashBytesCount>>(CreateNewOnDisk{}, base_path_, SackSize));
     }
 
+    void insert_hash(HashBytes<HashBytesCount> hash) {
+        tiers_[0]->insert_hash(std::move(hash));
+    }
+
     // Satisfy SubStoreConcept
     [[nodiscard]] static PiOffset Offset() {return PiOffset{0};}  // A store always represents offset 0
     [[nodiscard]] uint64_t Count() const {return tiers_[0]->Count() + other_tiers_counts_total;}

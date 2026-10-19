@@ -105,6 +105,8 @@ private:
 template<size_t HashBytesCount>
 struct HashBytes {
     std::array<uint8_t, HashBytesCount> bytes;
+    HashBytes() = default;
+    HashBytes(std::array<uint8_t, HashBytesCount> bytes) : bytes(bytes) {}
 };
 
 template<size_t HashBytesCount>

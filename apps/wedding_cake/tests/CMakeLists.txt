@@ -1,4 +1,7 @@
-add_executable(test_wedding_cake_app test_create_empty.cpp)
+add_executable(test_wedding_cake_app
+        test_create_empty.cpp
+        test_hashes_65535.cpp
+)
 
 target_include_directories(test_wedding_cake_app PRIVATE ../include)
 
