@@ -3,6 +3,8 @@ add_library(evolving_disk_state STATIC
         src/dummy2.cpp
         include/evolving_disk_state/evolver_type_state.hpp
         include/evolving_disk_state/tier.hpp
+        include/evolving_disk_state/concepts.hpp
+        include/evolving_disk_state/buffer_room.hpp
 )
 
 # Tell consumers where to find the header files
