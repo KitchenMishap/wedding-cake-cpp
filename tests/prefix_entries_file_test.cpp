@@ -27,34 +27,35 @@ protected:
     }
 };
 
+constexpr uint8_t HashBytesCount = 32;
+
 TEST_F(PrefixEntriesFileTest, RoundTripWriteReadSequentialAndSeek) {
-    const uint8_t hash_bytes = 16;
     const uint8_t tail_bits = 12;      // Requires ceil((128 - 12) / 8) = 15 prefix bytes
     const uint8_t local_pi_bytes = 3;
     const uint64_t sample_tail_index = 0x0ABC;
 
     // Instantiate factory for this configuration
-    ReaderWriterFactory factory(base_test_dir, hash_bytes, local_pi_bytes, tail_bits);
+    ReaderWriterFactory<HashBytesCount> factory(base_test_dir, local_pi_bytes, tail_bits);
 
-    std::vector<uint8_t> hash_buf_1(hash_bytes, 0xAA); // Initial tail byte pattern 0xAA
-    std::vector<uint8_t> hash_buf_2(hash_bytes, 0xBB); // Initial tail byte pattern 0xBB
+    std::vector<uint8_t> hash_buf_1(HashBytesCount, 0xAA); // Initial tail byte pattern 0xAA
+    std::vector<uint8_t> hash_buf_2(HashBytesCount, 0xBB); // Initial tail byte pattern 0xBB
 
     // Set MSB prefix data for Entry 1
-    std::memset(hash_buf_1.data() + 1, 0x11, hash_bytes - 1);
+    std::memset(hash_buf_1.data() + 1, 0x11, HashBytesCount - 1);
 
     // Set MSB prefix data for Entry 2
-    std::memset(hash_buf_2.data() + 1, 0x22, hash_bytes - 1);
+    std::memset(hash_buf_2.data() + 1, 0x22, HashBytesCount - 1);
 
-    PrefixEntriesFile::Entry entry1{ .hash = HashView(hash_buf_1), .local_pi = LocalPi(100) };
-    PrefixEntriesFile::Entry entry2{ .hash = HashView(hash_buf_2), .local_pi = LocalPi(20000) };
+    LSSuffixEntriesFile<HashBytesCount>::Entry entry1{ .hash = HashView(hash_buf_1), .local_pi = LocalPi(100) };
+    LSSuffixEntriesFile<HashBytesCount>::Entry entry2{ .hash = HashView(hash_buf_2), .local_pi = LocalPi(20000) };
 
     // --- INITIALIZATION & WRITE PHASE ---
     {
         // 1. Create the empty file via Factory first
-        factory.create_empty_prefix_entries_file(sample_tail_index);
+        factory.create_empty_ls_suffix_entries_file(sample_tail_index);
 
         // 2. Open writer and append entries
-        auto writer = factory.create_prefix_entries_file_writer(sample_tail_index);
+        auto writer = factory.create_ls_suffix_entries_file_writer(sample_tail_index);
         writer->append(entry1);
         writer->append(entry2);
         writer->flush();
@@ -62,10 +63,10 @@ TEST_F(PrefixEntriesFileTest, RoundTripWriteReadSequentialAndSeek) {
 
     // --- READ PHASE (Sequential) ---
     {
-        auto reader = factory.create_prefix_entries_file_reader(sample_tail_index);
+        auto reader = factory.create_ls_suffix_entries_file_reader(sample_tail_index);
 
         // Pre-fill target hash buffer with dummy bytes (e.g., 0xFF) in lower tail bytes
-        std::vector<uint8_t> read_buf(hash_bytes, 0xFF);
+        std::vector<uint8_t> read_buf(HashBytesCount, 0xFF);
         LocalPi read_pi{0};
 
         // Read Entry 1
@@ -96,9 +97,9 @@ TEST_F(PrefixEntriesFileTest, RoundTripWriteReadSequentialAndSeek) {
 
     // --- READ PHASE (Random Access Seek) ---
     {
-        auto reader = factory.create_prefix_entries_file_reader(sample_tail_index);
+        auto reader = factory.create_ls_suffix_entries_file_reader(sample_tail_index);
 
-        std::vector<uint8_t> read_buf(hash_bytes, 0x00);
+        std::vector<uint8_t> read_buf(HashBytesCount, 0x00);
         LocalPi read_pi{0};
 
         // Seek directly to index 1 (Entry 2)
@@ -116,37 +117,36 @@ TEST_F(PrefixEntriesFileTest, RoundTripWriteReadSequentialAndSeek) {
 }
 
 TEST_F(PrefixEntriesFileTest, TruncateOnCreateEmpty) {
-    const uint8_t hash_bytes = 8;
-    const uint8_t tail_bits = 8;
+    const uint8_t ms_prefix_bits = 8;
     const uint8_t local_pi_bytes = 4;
     const uint64_t sample_tail_index = 0xFE;
 
-    ReaderWriterFactory factory(base_test_dir, hash_bytes, local_pi_bytes, tail_bits);
+    ReaderWriterFactory<HashBytesCount> factory(base_test_dir, local_pi_bytes, ms_prefix_bits);
 
     // Write initial 2 entries
-    factory.create_empty_prefix_entries_file(sample_tail_index);
+    factory.create_empty_ls_suffix_entries_file(sample_tail_index);
     {
-        auto writer = factory.create_prefix_entries_file_writer(sample_tail_index);
-        std::vector<uint8_t> buf(hash_bytes, 0x01);
+        auto writer = factory.create_ls_suffix_entries_file_writer(sample_tail_index);
+        std::vector<uint8_t> buf(HashBytesCount, 0x01);
         writer->append({ .hash = HashView(buf), .local_pi = LocalPi(1) });
         writer->append({ .hash = HashView(buf), .local_pi = LocalPi(2) });
         writer->flush();
     }
 
     // Re-creating empty file on the same tail index must truncate/reset state
-    factory.create_empty_prefix_entries_file(sample_tail_index);
+    factory.create_empty_ls_suffix_entries_file(sample_tail_index);
 
     // Append 1 new entry
     {
-        auto writer = factory.create_prefix_entries_file_writer(sample_tail_index);
-        std::vector<uint8_t> buf(hash_bytes, 0x02);
+        auto writer = factory.create_ls_suffix_entries_file_writer(sample_tail_index);
+        std::vector<uint8_t> buf(HashBytesCount, 0x02);
         writer->append({ .hash = HashView(buf), .local_pi = LocalPi(99) });
         writer->flush();
     }
 
     // Read back and verify only the newly appended entry exists
-    auto reader = factory.create_prefix_entries_file_reader(sample_tail_index);
-    std::vector<uint8_t> read_buf(hash_bytes, 0x00);
+    auto reader = factory.create_ls_suffix_entries_file_reader(sample_tail_index);
+    std::vector<uint8_t> read_buf(HashBytesCount, 0x00);
     LocalPi read_pi{0};
 
     ASSERT_TRUE(reader->read_next(read_buf, read_pi));
@@ -155,35 +155,34 @@ TEST_F(PrefixEntriesFileTest, TruncateOnCreateEmpty) {
 }
 
 TEST_F(PrefixEntriesFileTest, AppendAcrossMultipleWriterSessions) {
-    const uint8_t hash_bytes = 8;
     const uint8_t tail_bits = 8;
     const uint8_t local_pi_bytes = 4;
     const uint64_t sample_tail_index = 0x1A;
 
-    ReaderWriterFactory factory(base_test_dir, hash_bytes, local_pi_bytes, tail_bits);
+    ReaderWriterFactory<HashBytesCount> factory(base_test_dir, local_pi_bytes, tail_bits);
 
     // Single empty file initialization
-    factory.create_empty_prefix_entries_file(sample_tail_index);
+    factory.create_empty_ls_suffix_entries_file(sample_tail_index);
 
     // Session 1 write
     {
-        auto writer = factory.create_prefix_entries_file_writer(sample_tail_index);
-        std::vector<uint8_t> buf(hash_bytes, 0x01);
+        auto writer = factory.create_ls_suffix_entries_file_writer(sample_tail_index);
+        std::vector<uint8_t> buf(HashBytesCount, 0x01);
         writer->append({ .hash = HashView(buf), .local_pi = LocalPi(10) });
         writer->flush();
     }
 
     // Session 2 write (Appends to the same file)
     {
-        auto writer = factory.create_prefix_entries_file_writer(sample_tail_index);
-        std::vector<uint8_t> buf(hash_bytes, 0x02);
+        auto writer = factory.create_ls_suffix_entries_file_writer(sample_tail_index);
+        std::vector<uint8_t> buf(HashBytesCount, 0x02);
         writer->append({ .hash = HashView(buf), .local_pi = LocalPi(20) });
         writer->flush();
     }
 
     // Verify both entries exist sequentially
-    auto reader = factory.create_prefix_entries_file_reader(sample_tail_index);
-    std::vector<uint8_t> read_buf(hash_bytes, 0x00);
+    auto reader = factory.create_ls_suffix_entries_file_reader(sample_tail_index);
+    std::vector<uint8_t> read_buf(HashBytesCount, 0x00);
     LocalPi read_pi{0};
 
     ASSERT_TRUE(reader->has_more());
@@ -198,17 +197,14 @@ TEST_F(PrefixEntriesFileTest, AppendAcrossMultipleWriterSessions) {
 }
 
 TEST_F(PrefixEntriesFileTest, InvalidConstructorArguments) {
-    // Zero hash bytes
-    EXPECT_THROW(ReaderWriterFactory(base_test_dir, 0, 0, 4), std::invalid_argument);
-
-    // tail_bits_count >= total hash bits (16 bytes * 8 = 128 bits)
-    EXPECT_THROW(ReaderWriterFactory(base_test_dir, 16, 128, 4), std::invalid_argument);
+    // ms_prefix__bits_count >= total hash bits (16 bytes * 8 = 128 bits)
+    EXPECT_THROW(ReaderWriterFactory<16>(base_test_dir, 4, 128), std::invalid_argument);
 
     // Zero local_pi_bytes
-    EXPECT_THROW(ReaderWriterFactory(base_test_dir, 16, 0, 0), std::invalid_argument);
+    EXPECT_THROW(ReaderWriterFactory<HashBytesCount>(base_test_dir, 0, 16), std::invalid_argument);
 
     // local_pi_bytes > 8
-    EXPECT_THROW(ReaderWriterFactory(base_test_dir, 16, 0, 9), std::invalid_argument);
+    EXPECT_THROW(ReaderWriterFactory<HashBytesCount>(base_test_dir, 9, 0), std::invalid_argument);
 }
 
 } // namespace

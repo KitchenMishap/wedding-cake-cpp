@@ -10,6 +10,8 @@
 namespace wedding_cake {
 namespace {
 
+constexpr uint8_t HashBytesCount = 32;
+
 class HashesOrderFileTest : public ::testing::Test {
 protected:
     void SetUp() override {
@@ -33,7 +35,7 @@ TEST_F(HashesOrderFileTest, WriteAndReadEntries) {
     constexpr uint8_t tail_bits = 13;
     constexpr uint8_t pi_bytes = 3;
 
-    ReaderWriterFactory factory(test_dir_, hash_bytes, pi_bytes, tail_bits);
+    ReaderWriterFactory<HashBytesCount> factory(test_dir_, pi_bytes, tail_bits);
 
     // 1. Create the empty file explicitly
     factory.create_empty_hashes_order_file();
@@ -41,7 +43,7 @@ TEST_F(HashesOrderFileTest, WriteAndReadEntries) {
     // 2. Obtain writer and write records
     auto writer = factory.create_hashes_order_file_writer();
 
-    std::vector<HashesOrderFile::Entry> expected_entries = {
+    std::vector<HashesOrderFile<HashBytesCount>::Entry> expected_entries = {
         { LocalPi(0x00123456ULL), 0x1F05ULL, 0x01 },
         { LocalPi(0x00ABCDEFULL), 0x0123ULL, 0x02 },
         { LOCAL_PI_NO_MATCH,      0x1FFFULL, 0x03 },
@@ -75,12 +77,12 @@ TEST_F(HashesOrderFileTest, RandomAccessSeekEntry) {
     constexpr uint8_t tail_bits = 8;
     constexpr uint8_t pi_bytes = 4;
 
-    ReaderWriterFactory factory(test_dir_, hash_bytes, pi_bytes, tail_bits);
+    ReaderWriterFactory<HashBytesCount> factory(test_dir_, pi_bytes, tail_bits);
 
     factory.create_empty_hashes_order_file();
     auto writer = factory.create_hashes_order_file_writer();
 
-    std::vector<HashesOrderFile::Entry> entries = {
+    std::vector<HashesOrderFile<HashBytesCount>::Entry> entries = {
         { LocalPi(100), 0xAA, 0x0 },
         { LocalPi(200), 0xBB, 0x0 },
         { LocalPi(300), 0xCC, 0x0 },
@@ -114,7 +116,7 @@ TEST_F(HashesOrderFileTest, AppendAcrossMultipleWriters) {
     constexpr uint8_t tail_bits = 6;
     constexpr uint8_t pi_bytes = 2;
 
-    ReaderWriterFactory factory(test_dir_, hash_bytes, pi_bytes, tail_bits);
+    ReaderWriterFactory<HashBytesCount> factory(test_dir_, pi_bytes, tail_bits);
 
     // Initial empty file creation
     factory.create_empty_hashes_order_file();
@@ -155,7 +157,7 @@ TEST_F(HashesOrderFileTest, ExplicitResetViaCreateEmpty) {
     constexpr uint8_t tail_bits = 6;
     constexpr uint8_t pi_bytes = 2;
 
-    ReaderWriterFactory factory(test_dir_, hash_bytes, pi_bytes, tail_bits);
+    ReaderWriterFactory<HashBytesCount> factory(test_dir_, pi_bytes, tail_bits);
 
     // First write sequence
     factory.create_empty_hashes_order_file();
