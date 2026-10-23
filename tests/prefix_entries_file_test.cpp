@@ -6,7 +6,7 @@
 #include <span>
 #include <stdexcept>
 
-#include "wedding_cake/prefix_entries_file.hpp"
+#include "wedding_cake/ls_suffix_entries_file.hpp"
 #include "wedding_cake/reader_writer_factory.hpp"
 
 namespace wedding_cake {

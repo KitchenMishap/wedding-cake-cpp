@@ -9,8 +9,8 @@
 #include <utility>
 
 #include "hashes_order_file.hpp"
-#include "prefix_entries_file.hpp"
-#include "prefix_entries_path.hpp"
+#include "ls_suffix_entries_file.hpp"
+#include "ms_prefix_path.hpp"
 
 namespace wedding_cake {
 
