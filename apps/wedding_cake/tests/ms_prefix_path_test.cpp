@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <stdexcept>
-#include "wedding_cake/ms_prefix_path.hpp"
+#include "../include/ms_prefix_path.hpp"
 
 namespace wedding_cake {
 namespace test {

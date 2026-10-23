@@ -4,8 +4,8 @@
 #include <vector>
 #include <system_error>
 
-#include "wedding_cake/hashes_order_file.hpp"
-#include "wedding_cake/reader_writer_factory.hpp"
+#include "../include/hashes_order_file.hpp"
+#include "../include/reader_writer_factory.hpp"
 
 namespace wedding_cake {
 namespace {
