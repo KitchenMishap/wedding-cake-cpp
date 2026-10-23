@@ -63,6 +63,15 @@ protected:
 
 template<size_t HashBytesCount>
 class HashesOrderFileWriter : public HashesOrderFile<HashBytesCount> {
+    using Base = HashesOrderFile<HashBytesCount>;
+
+    // Bring dependent base members directly into local class scope
+    using typename Base::Entry;
+    using Base::local_pi_bytes_count_;
+    using Base::ms_prefix_bits_count_;
+    using Base::ms_prefix_bits_bytes_count_;
+    using Base::spare_bits_count;
+
 public:
     // Token that only ReaderWriterFactory can create
     class Key {
@@ -75,7 +84,7 @@ public:
                           const std::filesystem::path& path,
                           uint8_t local_pi_bytes_count,
                           uint8_t ms_prefix_bits_count)
-        : HashesOrderFile<HashBytesCount>(local_pi_bytes_count, ms_prefix_bits_count)
+        : Base(local_pi_bytes_count, ms_prefix_bits_count)
     {
         // Open in binary mode for writing (append)
         file_.open(path, std::ios::out | std::ios::app | std::ios::binary);
@@ -97,7 +106,7 @@ public:
     HashesOrderFileWriter& operator=(HashesOrderFileWriter&& other) = delete;
 
     // Appends to file
-    void append(const HashesOrderFile<HashBytesCount>::Entry& entry) {
+    void append(const Entry& entry) {
         // 1. Prepare LocalPi bytes (Little-Endian)
         uint64_t pi_raw = 0;
         if (entry.local_pi.is_no_match()) {
@@ -105,24 +114,24 @@ public:
         } else {
             pi_raw = entry.local_pi.to_int();
         }
-        file_.write(reinterpret_cast<const char*>(&pi_raw), HashesOrderFile<HashBytesCount>::local_pi_bytes_count_);
+        file_.write(reinterpret_cast<const char*>(&pi_raw), local_pi_bytes_count_);
 
         // 2. Prepare ms_prefix_bits & spare_bits bytes (Little-Endian)
-        if (HashesOrderFile<HashBytesCount>::ms_prefix_bits_bytes_count_ > 0) {
+        if (ms_prefix_bits_bytes_count_ > 0) {
             uint64_t prefix_field_raw = 0;
 
-            if (HashesOrderFile<HashBytesCount>::ms_prefix_bits_count_ > 0) {
-                uint64_t prefix_mask = (HashesOrderFile<HashBytesCount>::ms_prefix_bits_count_ == 64) ? ~0ULL : ((1ULL << HashesOrderFile<HashBytesCount>::ms_prefix_bits_count_) - 1);
+            if (ms_prefix_bits_count_ > 0) {
+                uint64_t prefix_mask = (ms_prefix_bits_count_ == 64) ? ~0ULL : ((1ULL << ms_prefix_bits_count_) - 1);
                 prefix_field_raw |= (entry.ms_prefix_bits & prefix_mask);
             }
 
-            uint8_t spare_count = HashesOrderFile<HashBytesCount>::spare_bits_count();
+            uint8_t spare_count = spare_bits_count();
             if (spare_count > 0) {
                 uint64_t spare_mask = (spare_count == 64) ? ~0ULL : ((1ULL << spare_count) - 1);
-                prefix_field_raw |= ((entry.spare_bits & spare_mask) << HashesOrderFile<HashBytesCount>::ms_prefix_bits_count_);
+                prefix_field_raw |= ((entry.spare_bits & spare_mask) << ms_prefix_bits_count_);
             }
 
-            file_.write(reinterpret_cast<const char*>(&prefix_field_raw), HashesOrderFile<HashBytesCount>::ms_prefix_bits_bytes_count_);
+            file_.write(reinterpret_cast<const char*>(&prefix_field_raw), ms_prefix_bits_bytes_count_);
         }
     }
 
@@ -139,6 +148,16 @@ class ReaderWriterFactory;
 
 template<size_t HashBytesCount>
 class HashesOrderFileReader : public HashesOrderFile<HashBytesCount> {
+    using Base = HashesOrderFile<HashBytesCount>;
+
+    // Bring dependent base members directly into local class scope
+    using typename Base::Entry;
+    using Base::local_pi_bytes_count_;
+    using Base::ms_prefix_bits_count_;
+    using Base::ms_prefix_bits_bytes_count_;
+    using Base::spare_bits_count;
+    using Base::entry_bytes_count_;
+
 public:
     // Token only ReaderWriterFactory can access
     class Key {
@@ -174,7 +193,7 @@ public:
 
     // Seeks to zero-based entry index
     bool seek_entry(uint64_t index) {
-        const auto pos = static_cast<std::streamoff>(index * HashesOrderFile<HashBytesCount>::entry_bytes_count_);
+        const auto pos = static_cast<std::streamoff>(index * entry_bytes_count_);
         file_.seekg(pos, std::ios::beg);
         return file_.good();
     }
@@ -185,17 +204,17 @@ public:
     }
 
     // Reads entry at current file position
-    [[nodiscard]] HashesOrderFile<HashBytesCount>::Entry read_next() {
-        typename HashesOrderFile<HashBytesCount>::Entry entry{};
-        if (HashesOrderFile<HashBytesCount>::entry_bytes_count_ == 0) return entry;
+    [[nodiscard]] Entry read_next() {
+        Entry entry{};
+        if (entry_bytes_count_ == 0) return entry;
 
         // 1. Read LocalPi bytes (Little-Endian)
         if (!has_more()) return entry;
         uint64_t pi_raw = 0;
-        file_.read(reinterpret_cast<char*>(&pi_raw), HashesOrderFile<HashBytesCount>::local_pi_bytes_count_);
+        file_.read(reinterpret_cast<char*>(&pi_raw), local_pi_bytes_count_);
 
         // Check if all N bytes read are 0xFF (sentinel for LOCAL_PI_NO_MATCH)
-        uint64_t max_pi_mask = (HashesOrderFile<HashBytesCount>::local_pi_bytes_count_ == 8) ? ~0ULL : ((1ULL << (HashesOrderFile<HashBytesCount>::local_pi_bytes_count_ * 8)) - 1);
+        uint64_t max_pi_mask = (local_pi_bytes_count_ == 8) ? ~0ULL : ((1ULL << (local_pi_bytes_count_ * 8)) - 1);
         if ((pi_raw & max_pi_mask) == max_pi_mask) {
             entry.local_pi = LOCAL_PI_NO_MATCH;
         } else {
@@ -205,15 +224,15 @@ public:
         // 2. Read ms_prefix_bits & spare_bits bytes (if ms_prefix_bits_bytes_ > 0)
         if (HashesOrderFile<HashBytesCount>::ms_prefix_bits_bytes_count_ > 0) {
             uint64_t prefix_field_raw = 0;
-            file_.read(reinterpret_cast<char*>(&prefix_field_raw), HashesOrderFile<HashBytesCount>::ms_prefix_bits_bytes_count_);
+            file_.read(reinterpret_cast<char*>(&prefix_field_raw), ms_prefix_bits_bytes_count_);
 
-            if (HashesOrderFile<HashBytesCount>::ms_prefix_bits_count_ == 0) {
+            if (ms_prefix_bits_count_ == 0) {
                 entry.ms_prefix_bits = 0;
                 entry.spare_bits = prefix_field_raw;
             } else {
-                uint64_t prefix_mask = (HashesOrderFile<HashBytesCount>::ms_prefix_bits_count_ == 64) ? ~0ULL : ((1ULL << HashesOrderFile<HashBytesCount>::ms_prefix_bits_count_) - 1);
+                uint64_t prefix_mask = (ms_prefix_bits_count_ == 64) ? ~0ULL : ((1ULL << ms_prefix_bits_count_) - 1);
                 entry.ms_prefix_bits = prefix_field_raw & prefix_mask;
-                entry.spare_bits = prefix_field_raw >> HashesOrderFile<HashBytesCount>::ms_prefix_bits_count_;
+                entry.spare_bits = prefix_field_raw >> ms_prefix_bits_count_;
             }
         }
 
