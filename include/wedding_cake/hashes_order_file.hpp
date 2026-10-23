@@ -19,39 +19,39 @@ class HashesOrderFileReader;
 
 // Private base class
 class HashesOrderFile {
-    friend HashesOrderFileWriter;
-    friend HashesOrderFileReader;
+    friend class HashesOrderFileWriter;
+    friend class HashesOrderFileReader;
 public:
     struct Entry {
         LocalPi local_pi{LOCAL_PI_NO_MATCH};
-        uint64_t tail_bits{0};
-        uint8_t spare_bits{0}; // Top unused bits in the tail_bits field
+        uint64_t ms_prefix_bits{0};
+        uint8_t spare_bits{0}; // Top unused bits in the ms_prefix_bits field
     };
 
     [[nodiscard]] size_t entry_size_bytes() const noexcept { return entry_bytes_count_; }
-    [[nodiscard]] uint8_t tail_bits_count() const noexcept { return tail_bits_count_; }
+    [[nodiscard]] uint8_t ms_prefix_bits_count() const noexcept { return ms_prefix_bits_count_; }
     [[nodiscard]] uint8_t spare_bits_count() const noexcept {
-        return (tail_bits_bytes_count_ * 8) - tail_bits_count_;
+        return (ms_prefix_bits_bytes_count_ * 8) - ms_prefix_bits_count_;
     }
 
 private:
     HashesOrderFile(const uint8_t local_pi_bytes_count,     // Ctor permitted when deriving from HashesOrderFileReader/Writer
-                    const uint8_t tail_bits_count)
+                    const uint8_t ms_prefix_bits_count)
         : local_pi_bytes_count_(local_pi_bytes_count),
-          tail_bits_count_(tail_bits_count),
-          tail_bits_bytes_count_((tail_bits_count + 7) / 8),
-          entry_bytes_count_(local_pi_bytes_count_ + tail_bits_bytes_count_) {
+          ms_prefix_bits_count_(ms_prefix_bits_count),
+          ms_prefix_bits_bytes_count_((ms_prefix_bits_count + 7) / 8),
+          entry_bytes_count_(local_pi_bytes_count_ + ms_prefix_bits_bytes_count_) {
         if (local_pi_bytes_count_ == 0 || local_pi_bytes_count_ > 8) {
             throw std::invalid_argument("local_pi_bytes must be between 1 and 8");
         }
-        if (tail_bits_count_ > 64) {
-            throw std::invalid_argument("tail_bits_count cannot exceed 64");
+        if (ms_prefix_bits_count_ > 64) {
+            throw std::invalid_argument("ms_prefix_bits_count cannot exceed 64");
         }
     }
 protected:
     uint8_t local_pi_bytes_count_{0};
-    uint8_t tail_bits_count_{0};
-    uint8_t tail_bits_bytes_count_{0};
+    uint8_t ms_prefix_bits_count_{0};
+    uint8_t ms_prefix_bits_bytes_count_{0};
     size_t  entry_bytes_count_{0};
 };
 
@@ -65,11 +65,11 @@ public:
     };
 
     // Creates a file managed internally by path
-    HashesOrderFileWriter( Key,
-                    const std::filesystem::path& path,
-                    uint8_t local_pi_bytes_count,
-                    uint8_t tail_bits_count)
-    : HashesOrderFile(local_pi_bytes_count, tail_bits_count)
+    HashesOrderFileWriter(Key,
+                          const std::filesystem::path& path,
+                          uint8_t local_pi_bytes_count,
+                          uint8_t ms_prefix_bits_count)
+        : HashesOrderFile(local_pi_bytes_count, ms_prefix_bits_count)
     {
         // Open in binary mode for writing (append)
         file_.open(path, std::ios::out | std::ios::app | std::ios::binary);
@@ -88,7 +88,7 @@ public:
     HashesOrderFileWriter(const HashesOrderFileWriter&) = delete;
     HashesOrderFileWriter& operator=(const HashesOrderFileWriter&) = delete;
     HashesOrderFileWriter(HashesOrderFileWriter&& other) = delete;
-    HashesOrderFileWriter& operator=(HashesOrderFileWriter&& other)  = delete;
+    HashesOrderFileWriter& operator=(HashesOrderFileWriter&& other) = delete;
 
     // Appends to file
     void append(const Entry& entry) {
@@ -101,22 +101,22 @@ public:
         }
         file_.write(reinterpret_cast<const char*>(&pi_raw), local_pi_bytes_count_);
 
-        // 2. Prepare tail_bits & spare_bits bytes (Little-Endian)
-        if (tail_bits_bytes_count_ > 0) {
-            uint64_t tail_field_raw = 0;
+        // 2. Prepare ms_prefix_bits & spare_bits bytes (Little-Endian)
+        if (ms_prefix_bits_bytes_count_ > 0) {
+            uint64_t prefix_field_raw = 0;
 
-            if (tail_bits_count_ > 0) {
-                uint64_t tail_mask = (tail_bits_count_ == 64) ? ~0ULL : ((1ULL << tail_bits_count_) - 1);
-                tail_field_raw |= (entry.tail_bits & tail_mask);
+            if (ms_prefix_bits_count_ > 0) {
+                uint64_t prefix_mask = (ms_prefix_bits_count_ == 64) ? ~0ULL : ((1ULL << ms_prefix_bits_count_) - 1);
+                prefix_field_raw |= (entry.ms_prefix_bits & prefix_mask);
             }
-            
+
             uint8_t spare_count = spare_bits_count();
             if (spare_count > 0) {
                 uint64_t spare_mask = (spare_count == 64) ? ~0ULL : ((1ULL << spare_count) - 1);
-                tail_field_raw |= ((entry.spare_bits & spare_mask) << tail_bits_count_);
+                prefix_field_raw |= ((entry.spare_bits & spare_mask) << ms_prefix_bits_count_);
             }
 
-            file_.write(reinterpret_cast<const char*>(&tail_field_raw), tail_bits_bytes_count_);
+            file_.write(reinterpret_cast<const char*>(&prefix_field_raw), ms_prefix_bits_bytes_count_);
         }
     }
 
@@ -134,16 +134,16 @@ class HashesOrderFileReader : public HashesOrderFile {
 public:
     // Token only ReaderWriterFactory can access
     class Key {
-        friend ReaderWriterFactory;
+        friend class ReaderWriterFactory;
         explicit Key() = default;
     };
 
     // Opens (or creates) a file managed internally by path
     HashesOrderFileReader(Key,
-                    const std::filesystem::path& path,
-                    uint8_t local_pi_bytes_count,
-                    uint8_t tail_bits_count)
-        : HashesOrderFile(local_pi_bytes_count, tail_bits_count)
+                          const std::filesystem::path& path,
+                          uint8_t local_pi_bytes_count,
+                          uint8_t ms_prefix_bits_count)
+        : HashesOrderFile(local_pi_bytes_count, ms_prefix_bits_count)
     {
         // Open in binary mode for reading
         file_.open(path, std::ios::in | std::ios::binary);
@@ -194,18 +194,18 @@ public:
             entry.local_pi = LocalPi(pi_raw & max_pi_mask);
         }
 
-        // 2. Read tail_bits & spare_bits bytes (if tail_bits_bytes_ > 0)
-        if (tail_bits_bytes_count_ > 0) {
-            uint64_t tail_field_raw = 0;
-            file_.read(reinterpret_cast<char*>(&tail_field_raw), tail_bits_bytes_count_);
+        // 2. Read ms_prefix_bits & spare_bits bytes (if ms_prefix_bits_bytes_ > 0)
+        if (ms_prefix_bits_bytes_count_ > 0) {
+            uint64_t prefix_field_raw = 0;
+            file_.read(reinterpret_cast<char*>(&prefix_field_raw), ms_prefix_bits_bytes_count_);
 
-            if (tail_bits_count_ == 0) {
-                entry.tail_bits = 0;
-                entry.spare_bits = tail_field_raw;
+            if (ms_prefix_bits_count_ == 0) {
+                entry.ms_prefix_bits = 0;
+                entry.spare_bits = prefix_field_raw;
             } else {
-                uint64_t tail_mask = (tail_bits_count_ == 64) ? ~0ULL : ((1ULL << tail_bits_count_) - 1);
-                entry.tail_bits = tail_field_raw & tail_mask;
-                entry.spare_bits = tail_field_raw >> tail_bits_count_;
+                uint64_t prefix_mask = (ms_prefix_bits_count_ == 64) ? ~0ULL : ((1ULL << ms_prefix_bits_count_) - 1);
+                entry.ms_prefix_bits = prefix_field_raw & prefix_mask;
+                entry.spare_bits = prefix_field_raw >> ms_prefix_bits_count_;
             }
         }
 

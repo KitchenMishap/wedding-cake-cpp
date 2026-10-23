@@ -60,7 +60,7 @@ TEST_F(HashesOrderFileTest, WriteAndReadEntries) {
         auto actual = reader->read_next();
 
         EXPECT_EQ(actual.local_pi, expected_entries[i].local_pi) << "Mismatch at index " << i;
-        EXPECT_EQ(actual.tail_bits, expected_entries[i].tail_bits) << "Mismatch at index " << i;
+        EXPECT_EQ(actual.ms_prefix_bits, expected_entries[i].ms_prefix_bits) << "Mismatch at index " << i;
         EXPECT_EQ(actual.spare_bits, expected_entries[i].spare_bits) << "Mismatch at index " << i;
     }
 
@@ -97,13 +97,13 @@ TEST_F(HashesOrderFileTest, RandomAccessSeekEntry) {
     ASSERT_TRUE(reader->seek_entry(1));
     auto entry1 = reader->read_next();
     EXPECT_EQ(entry1.local_pi, entries[1].local_pi);
-    EXPECT_EQ(entry1.tail_bits, entries[1].tail_bits);
+    EXPECT_EQ(entry1.ms_prefix_bits, entries[1].ms_prefix_bits);
 
     // Seek back to index 0 (first entry)
     ASSERT_TRUE(reader->seek_entry(0));
     auto entry0 = reader->read_next();
     EXPECT_EQ(entry0.local_pi, entries[0].local_pi);
-    EXPECT_EQ(entry0.tail_bits, entries[0].tail_bits);
+    EXPECT_EQ(entry0.ms_prefix_bits, entries[0].ms_prefix_bits);
 }
 
 // -----------------------------------------------------------------------------

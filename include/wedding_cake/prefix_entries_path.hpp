@@ -26,11 +26,11 @@ namespace wedding_cake {
  * @brief Constructs a hierarchical folder/file path based on ms_prefix_bits_count and ms_prefix_index.
  *
  * - ms_prefix_bits_count == 0 ($T=0$):
- *     "HashEntries"
+ *     "HashEntries.bin"
  * - 1 <= ms_prefix_bits_count <= 8:
- *     "MSPrefix/XX_LSSuffixEntries"
+ *     "MSPrefix/XX_LSSuffixEntries.bin"
  * - 9 <= ms_prefix_bits_count <= 16:
- *     "MSPrefix/XX/YY_LSSuffixEntries"
+ *     "MSPrefix/XX/YY_LSSuffixEntries.bin"
  *
  * @param base_dir Root directory where hierarchy (or HashesEntries.bin) will be created.
  * @param ms_prefix_bits_count Total routing prefix bits determining depth (0 to 64).
