@@ -57,7 +57,7 @@ public:
 
     // PrefixEntries file
     void create_empty_prefix_entries_file(uint64_t tail_index) const {
-        auto file_path = make_prefix_entries_path(path_, tail_bits_count_, tail_index);
+        auto file_path = make_ms_prefix_path(path_, tail_bits_count_, tail_index);
         std::filesystem::create_directories(file_path.parent_path());
 
         std::ofstream file;
@@ -69,7 +69,7 @@ public:
     }
 
     [[nodiscard]] std::unique_ptr<PrefixEntriesFileWriter> create_prefix_entries_file_writer(uint64_t tail_index) const {
-        auto file_path = make_prefix_entries_path(path_, tail_bits_count_, tail_index);
+        auto file_path = make_ms_prefix_path(path_, tail_bits_count_, tail_index);
         std::filesystem::create_directories(file_path.parent_path());
 
         return std::make_unique<PrefixEntriesFileWriter>(
@@ -77,7 +77,7 @@ public:
     }
 
     [[nodiscard]] std::unique_ptr<PrefixEntriesFileReader> create_prefix_entries_file_reader(uint64_t tail_index) const {
-        auto file_path = make_prefix_entries_path(path_, tail_bits_count_, tail_index);
+        auto file_path = make_ms_prefix_path(path_, tail_bits_count_, tail_index);
 
         return std::make_unique<PrefixEntriesFileReader>(
             PrefixEntriesFileReader::Key{}, file_path, hash_bytes_count_, pi_bytes_count_, tail_bits_count_);
