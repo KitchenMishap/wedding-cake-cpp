@@ -5,6 +5,7 @@ add_library(evolving_disk_state STATIC
         include/evolving_disk_state/tier.hpp
         include/evolving_disk_state/concepts.hpp
         include/evolving_disk_state/buffer_room.hpp
+        include/evolving_disk_state/tier_folder.hpp
 )
 
 # Tell consumers where to find the header files

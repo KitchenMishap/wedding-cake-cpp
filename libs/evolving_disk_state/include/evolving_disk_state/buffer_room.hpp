@@ -19,11 +19,22 @@ public:
     static constexpr std::size_t capacity = C;
 
     BufferRoom() = default;
-    ~BufferRoom() = default; // Preserves disk folders on app exit!
+    ~BufferRoom() = default;
 
     // Non-copyable, non-movable
     BufferRoom(const BufferRoom&) = delete;
     BufferRoom& operator=(const BufferRoom&) = delete;
+
+    //---------------
+    // Initialization
+    //---------------
+    void InitializeAdd(T item) {
+        if (items_.size() >= capacity) {
+            throw std::invalid_argument("BufferRoom::InitializeAdd(): buffer room already at capacity");
+        }
+        std::unique_lock<std::shared_mutex> data_lock(data_mutex_);
+        items_.push_back(std::move(item));
+    }
 
     // -------------------------------------------------------------------------
     // Upstream Producer: Feed

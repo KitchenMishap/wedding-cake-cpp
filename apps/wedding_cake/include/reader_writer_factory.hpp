@@ -10,7 +10,7 @@
 
 #include "hashes_order_file.hpp"
 #include "ls_suffix_entries_file.hpp"
-#include "ms_prefix_path.hpp"
+#include "hash_prefix_suffix.hpp"
 
 namespace wedding_cake {
 

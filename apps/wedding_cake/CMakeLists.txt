@@ -4,10 +4,6 @@ project(wedding_cake CXX)
 # 1. Define the executable target and its source files
 add_executable(wedding_cake
         src/main.cpp
-        include/evolving_type_states.hpp
-        include/tiers.hpp
-        include/store.hpp
-        include/concepts.hpp
 )
 
 # Statically link the C++ standard library so the user doesn't need to install it

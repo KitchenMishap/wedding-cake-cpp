@@ -92,11 +92,10 @@ gtest_discover_tests(unit_tests
 # -----------------------------------------------------------------------------
 add_executable(profile_shallow_tree
         src/profile_main.cpp
-        apps/wedding_cake/include/concepts.hpp
+        apps/wedding_cake/include/concepts_wedding_cake.hpp
         apps/wedding_cake/include/hashes_order_file.hpp
         apps/wedding_cake/include/ls_suffix_entries_file.hpp
         apps/wedding_cake/include/reader_writer_factory.hpp
-        apps/wedding_cake/include/ms_prefix_path.hpp
 )
 
 target_include_directories(profile_shallow_tree PRIVATE include)
