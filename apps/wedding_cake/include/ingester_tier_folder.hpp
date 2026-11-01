@@ -103,7 +103,7 @@ inline void IngesterTierFolder<HashBytesCount>::promote_hatchling_and_spawn_next
     // hatchling_ is now "valid but unspecified" and must be re-initialized soon!
     buffer_room_.Feed(std::move(promoted_hatchling));   // Might block (which is fine)
     Ingester_ST00_RemainderDonut<HashBytesCount> replacement_hatchling(
-        evolving_disk_state::object_folder_name(new_offset), ingester_donut_capacity);
+        tier_path_ / evolving_disk_state::object_folder_name(new_offset), ingester_donut_capacity);
     // Phew! now re-initialized
     hatchling_ = std::move(replacement_hatchling);
 }
