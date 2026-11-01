@@ -1,6 +1,5 @@
 #pragma once
 
-#include "block_of_hashes.hpp"
 #include <evolving_disk_state/buffer_room.hpp>
 
 #include <filesystem>
