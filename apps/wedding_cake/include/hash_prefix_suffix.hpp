@@ -39,18 +39,18 @@ struct MsPrefixBytes {
     std::span<const std::uint8_t> bytes;
 
     // Explicit conversions/accessors for convenience
-    constexpr auto begin() const { return bytes.begin(); }
-    constexpr auto end() const { return bytes.end(); }
-    constexpr auto size() const { return bytes.size(); }
+    [[nodiscard]] constexpr auto begin() const { return bytes.begin(); }
+    [[nodiscard]] constexpr auto end() const { return bytes.end(); }
+    [[nodiscard]] constexpr auto size() const { return bytes.size(); }
     constexpr auto operator[](const size_t idx) const { return bytes[idx]; }
 };
 struct LsSuffixBytes {
     explicit LsSuffixBytes(const std::span<const std::uint8_t> span) : bytes(span) {}
     std::span<const std::uint8_t> bytes;
 
-    constexpr auto begin() const { return bytes.begin(); }
-    constexpr auto end() const { return bytes.end(); }
-    constexpr auto size() const { return bytes.size(); }
+    [[nodiscard]] constexpr auto begin() const { return bytes.begin(); }
+    [[nodiscard]] constexpr auto end() const { return bytes.end(); }
+    [[nodiscard]] constexpr auto size() const { return bytes.size(); }
     constexpr auto operator[](const size_t idx) const { return bytes[idx]; }
 };
 
@@ -59,17 +59,17 @@ struct MsPrefixBytesMasked {
     std::vector<std::uint8_t> bytes;
 
     // Explicit conversions/accessors for convenience
-    constexpr auto begin() const { return bytes.begin(); }
-    constexpr auto end() const { return bytes.end(); }
-    constexpr auto size() const { return bytes.size(); }
+    [[nodiscard]] constexpr auto begin() const { return bytes.begin(); }
+    [[nodiscard]] constexpr auto end() const { return bytes.end(); }
+    [[nodiscard]] constexpr auto size() const { return bytes.size(); }
     constexpr auto operator[](const size_t idx) const { return bytes[idx]; }
 };
 struct LsSuffixBytesMasked {
     std::vector<std::uint8_t> bytes;
 
-    constexpr auto begin() const { return bytes.begin(); }
-    constexpr auto end() const { return bytes.end(); }
-    constexpr auto size() const { return bytes.size(); }
+    [[nodiscard]] constexpr auto begin() const { return bytes.begin(); }
+    [[nodiscard]] constexpr auto end() const { return bytes.end(); }
+    [[nodiscard]] constexpr auto size() const { return bytes.size(); }
     constexpr auto operator[](const size_t idx) const { return bytes[idx]; }
 };
 
