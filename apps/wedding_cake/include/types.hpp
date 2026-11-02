@@ -107,6 +107,7 @@ struct HashBytes {
     std::array<uint8_t, HashBytesCount> bytes;
     HashBytes() = default;
     HashBytes(std::array<uint8_t, HashBytesCount> bytes) : bytes(bytes) {}
+    auto operator<=>(const HashBytes&) const = default;
 };
 
 template<size_t HashBytesCount>

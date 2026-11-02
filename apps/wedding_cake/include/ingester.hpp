@@ -18,7 +18,8 @@ public:
     /// Constructs the Ingester tier and kicks off the asynchronous background worker thread.
     explicit Ingester(const std::filesystem::path& base_path)
         : ingester_tier_folder_(base_path)
-        , ingester_buffer_(get_downstream_remaining_capacity(ingester_tier_folder_))
+        , ingester_buffer_(get_downstream_remaining_capacity(ingester_tier_folder_),
+                            get_downstream_next_offset(ingester_tier_folder_))
         // std::jthread automatically creates a stop token and passes it as parameter 1 to ingestor_worker!
         , worker_thread_(&ingestor_worker<HashBytesCount>,
                          std::ref(ingester_buffer_),
@@ -52,6 +53,16 @@ public:
         ingester_buffer_.flush();
     }
 
+    // Forward lookup requests to buffer
+    std::optional<HashBytes<HashBytesCount>> forward_lookup(GlobalPi global_pi, bool& found) const {
+        return ingester_buffer_.forward_lookup(global_pi, found);
+        // ToDo also ask the ingester_tier_folder_
+    }
+    [[nodiscard]] GlobalPi reverse_lookup(const HashBytes<HashBytesCount>& hash) const {
+        return ingester_buffer_.reverse_lookup(hash);
+        // ToDo also ask the ingester_tier_folder_
+    }
+
 private:
     // Member declaration order matters!
     // ingester_tier_folder_ and ingester_buffer_ MUST be declared BEFORE worker_thread_
@@ -65,6 +76,12 @@ private:
     static uint64_t get_downstream_remaining_capacity(const IngesterTierFolder<HashBytesCount>& ingester_tier_folder) {
         return ingester_tier_folder.hatchling().remaining_capacity();
     }
+    static PiOffset get_downstream_next_offset(const IngesterTierFolder<HashBytesCount>& ingester_tier_folder) {
+        return ingester_tier_folder.hatchling().next_offset();
+    }
 };
+
+static_assert(Lookupable<Ingester<32>, 32>,
+          "Ingester<32> must fulfill the Lookupable concept!");
 
 } // namespace wedding_cake

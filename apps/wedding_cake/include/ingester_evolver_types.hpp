@@ -26,6 +26,8 @@ static constexpr auto ST00 = "Ingester_ST00_RemainderDonut";
     [[nodiscard]] size_t capacity() const {return capacity_;}
     [[nodiscard]] size_t remaining_capacity() const { return capacity_ - hashes_.size(); }
 
+    [[nodiscard]] PiOffset next_offset() const;
+
 private:
     void hydrate_self_for_evolution() {}    // Nothing needs doing, this state evolves directly from disk
     void hydrate_self_for_lookup() {}       // ToDo
@@ -66,6 +68,13 @@ size_t Ingester_ST00_RemainderDonut<HashBytesCount>::append_hashes(
     auto taking = std::min(available, remaining_capacity());
     hashes_.insert(hashes_.end(), ram_buffer.begin(), ram_buffer.begin() + taking);
     return taking;
+}
+
+// next_offset() is the global offset of the next hash to be ingested
+template<size_t HashBytesCount>
+PiOffset Ingester_ST00_RemainderDonut<HashBytesCount>::next_offset() const {
+    auto first_offset = evolving_disk_state::object_folder_single_offset(object_path_);
+    return PiOffset{first_offset + hashes_.size()};
 }
 
 //---------------------------------------------------------------------------

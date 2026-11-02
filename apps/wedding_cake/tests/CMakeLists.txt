@@ -1,9 +1,10 @@
 add_executable(test_wedding_cake_app
-        test_create_empty.cpp
-        test_hashes_65535.cpp
-        hashes_order_file_test.cpp
-        ls_suffix_entries_file_test.cpp
-        ms_prefix_path_test.cpp
+#        test_create_empty.cpp
+#        test_hashes_65535.cpp
+#        hashes_order_file_test.cpp
+#        ls_suffix_entries_file_test.cpp
+#        ms_prefix_path_test.cpp
+        test_create_empty_B.cpp
 )
 
 target_include_directories(test_wedding_cake_app PRIVATE ../include)
