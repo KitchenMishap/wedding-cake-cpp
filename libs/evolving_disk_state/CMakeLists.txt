@@ -6,10 +6,13 @@ add_library(evolving_disk_state STATIC
         include/evolving_disk_state/concepts.hpp
         include/evolving_disk_state/buffer_room.hpp
         include/evolving_disk_state/tier_folder.hpp
+        include/files_manifest/dummy_implementation.hpp
+        include/files_manifest/concepts_manifest.hpp
 )
 
 # Tell consumers where to find the header files
-target_include_directories(evolving_disk_state PUBLIC include)
+target_include_directories(evolving_disk_state PUBLIC include,
+    files_manifest/include, PUBLIC include)
 
 # Enforce C++20 standard for both MSVC and GCC/Clang
 target_compile_features(evolving_disk_state PUBLIC cxx_std_20)
