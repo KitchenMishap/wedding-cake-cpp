@@ -170,7 +170,7 @@ public:
             found = false;
             return std::nullopt;
         }
-        auto local_pi = global_pi - first_global_pi_;
+        const auto local_pi = global_pi - first_global_pi_;
         found = true;
         return buffer_[local_pi.to_int()];
     }

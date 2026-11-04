@@ -113,8 +113,18 @@ static void RunTest3x16384Hashes() {
             std::cout << "READING 16384: Block height: " << i << std::endl;
             for (size_t j = 0; j < 16384; ++j) {
                 auto k = i * 16384 + j;
+
+                // Forward lookup
+                bool found;
+                auto hash = store_b.forward_lookup(GlobalPi(k), found);
+                EXPECT_TRUE(found)
+                    << "Expected forward lookup to find GlobalPi's hash (Hash size: " << HashBytesCount << "B)";
+                EXPECT_EQ(hash, vec_all[k])
+                    << "Expected forward lookup to match GlobalPi's hash (Hash size: " << HashBytesCount << "B)";
+
+                // Reverse lookup
                 EXPECT_EQ(store_b.reverse_lookup(vec_all[k]), GlobalPi(k))
-                    << "Expected hash to match its presentation index (Hash size: " << HashBytesCount << "B)";
+                    << "Expected reverse lookup to match hash's presentation index (Hash size: " << HashBytesCount << "B)";
             }
         }
     }
