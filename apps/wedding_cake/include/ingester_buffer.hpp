@@ -52,6 +52,16 @@ public:
 
         if (stopping_) return;
 
+        // Insert for reverse lookup
+        auto local_pi_int = buffer_.size();
+        for (const auto& optional_hash : block) {
+            if (optional_hash.has_value()) {
+                reverse_lookup_map_[optional_hash.value()] = LocalPi(local_pi_int);
+            }
+            ++local_pi_int;
+        }
+
+        // Insert (move) for forward lookup & downstream consumption
         buffer_.insert(
             buffer_.end(),
             std::make_move_iterator(block.begin()),
@@ -107,7 +117,7 @@ public:
             return buffer_.size() >= downstream_remaining_capacity_ || please_flush_ || stopping_;
         });
 
-        if (stopping_ && buffer_.empty()) return;
+        if (stopping_ && buffer_.empty()) return;   // ToDo: Do we really want to wait for buffer empty when stopping?
 
         bool is_flush_active = please_flush_;
 
@@ -126,12 +136,15 @@ public:
         // 4. Update our first_global_pi_ which has now changed
         first_global_pi_ = PiOffset(first_global_pi_.to_int() + buffer_size_sent);
 
+        // 5. Empty the reverse lookup map too
+        reverse_lookup_map_.clear();
+
         if (is_flush_active) {
             please_flush_ = false;
             flush_done_cv_.notify_all();
         }
 
-        // 4. Notify any producer threads waiting on backpressure
+        // 6. Notify any producer threads waiting on backpressure
         can_feed_cv_.notify_all();
     }
 
@@ -164,13 +177,9 @@ public:
 
     GlobalPi reverse_lookup(const HashBytes<HashBytesCount>& hash) const {
         std::shared_lock<std::shared_mutex> lock(mutex_);
-        for (size_t local_pi_int = 0; local_pi_int < buffer_.size(); ++local_pi_int) {
-            auto& entry = buffer_[local_pi_int];
-            if (entry != std::nullopt) {
-                if (entry == hash) {
-                    return LocalPi{local_pi_int} + first_global_pi_;
-                }
-            }
+        auto it = reverse_lookup_map_.find(hash);
+        if (it != reverse_lookup_map_.end()) {
+            return it->second + first_global_pi_;
         }
         return GLOBAL_PI_NO_MATCH;
     }
@@ -178,6 +187,7 @@ public:
 private:
     size_t downstream_remaining_capacity_;
     BatchType buffer_;
+    std::map<HashBytes<HashBytesCount>, LocalPi> reverse_lookup_map_;
     PiOffset first_global_pi_;
 
     mutable std::shared_mutex mutex_;

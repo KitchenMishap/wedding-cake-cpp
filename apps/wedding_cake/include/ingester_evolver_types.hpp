@@ -33,7 +33,7 @@ static constexpr auto ST00 = "Ingester_ST00_RemainderDonut";
     // Returns the number of hashes consumed from ram_buffer
     size_t append_hashes(IngesterBuffer<HashBytesCount>::BatchType& ram_buffer); // Worker must then promote if full
     [[nodiscard]] size_t capacity() const {return capacity_;}
-    [[nodiscard]] size_t remaining_capacity() const { return capacity_ - hashes_.size(); }
+    [[nodiscard]] size_t remaining_capacity() const { return capacity_ - forward_lookup_vector_.size(); }
 
     [[nodiscard]] PiOffset next_offset() const;
 
@@ -42,8 +42,8 @@ private:
     void hydrate_self_for_evolution() {}    // Nothing needs doing, this state evolves directly from disk
     void hydrate_self_for_lookup() {}       // ToDo
 
-    // ToDo: member variables to support in-memory lookup
-    std::vector<std::optional<HashBytes<HashBytesCount>>> hashes_;  // ToDo for the time being...
+    std::vector<std::optional<HashBytes<HashBytesCount>>> forward_lookup_vector_;
+    std::map<HashBytes<HashBytesCount>,LocalPi> reverse_lookup_map_;
 
     size_t capacity_;
     std::filesystem::path object_path_;
@@ -119,10 +119,9 @@ size_t Ingester_ST00_RemainderDonut<HashBytesCount>::append_hashes(
     std::array<uint8_t, max_plausible_hashes_order_entry> hashes_order_buffer;
 
     // Look at every entry in the batch
-    auto local_pi_int = hashes_.size();
+    auto local_pi_int = forward_lookup_vector_.size();
     for (auto entry_it = ram_buffer.begin(); entry_it != ram_buffer.begin() + taking; ++entry_it) {
         // Calculate the bytes
-        bool hash_specified = (*entry_it != std::nullopt);
         auto count = donut_entries_calculator_.write_suffixes_file_entry(
             *entry_it, LocalPi(local_pi_int) + first_global_pi_, suffix_buffer);
         // Append count bytes to file (count can be zero if no hash is specified)
@@ -137,21 +136,34 @@ size_t Ingester_ST00_RemainderDonut<HashBytesCount>::append_hashes(
         st00_manifest_.append_to_file(file_handle_hashes_order_, std::span(hashes_order_buffer).first(count));
         ++local_pi_int;
     }
-    hashes_.insert(hashes_.end(), ram_buffer.begin(), ram_buffer.begin() + taking);
-    assert(hashes_.size() <= capacity_
-        && "append_hashes(): hashes_ overflowed somehow");
-    if (hashes_.size() == capacity_) {
+
+    // Add to the reverse lookup map (in memory)
+    local_pi_int = forward_lookup_vector_.size();
+    for (auto it = ram_buffer.begin(); it != ram_buffer.begin() + taking; ++it) {
+        if (it->has_value()) {
+            reverse_lookup_map_.insert({it->value(), LocalPi(local_pi_int)});
+        }
+        ++local_pi_int;
+    }
+
+    // Add to the forward lookup vector (in memory)
+    forward_lookup_vector_.insert(forward_lookup_vector_.end(), ram_buffer.begin(), ram_buffer.begin() + taking);
+
+    assert(forward_lookup_vector_.size() <= capacity_
+        && "append_hashes(): forward_lookup_vector_ overflowed somehow");
+    if (forward_lookup_vector_.size() == capacity_) {
         st00_manifest_.close_file(file_handle_suffix_entries_);
         st00_manifest_.close_file(file_handle_hashes_order_);
         st00_manifest_.finish_and_seal();
     }
+
     return taking;
 }
 
 // next_offset() is the global offset of the next hash to be ingested
 template<size_t HashBytesCount>
 PiOffset Ingester_ST00_RemainderDonut<HashBytesCount>::next_offset() const {
-    return PiOffset{LocalPi(hashes_.size()) + first_global_pi_};
+    return PiOffset{LocalPi(forward_lookup_vector_.size()) + first_global_pi_};
 }
 
 //---------------------------------------------------------------------------
