@@ -87,16 +87,16 @@ struct MsPrefixIndex {
 template<size_t HashBytesCount>
 MsPrefixBytes ms_prefix_bytes(const HashBytes<HashBytesCount>& hash, const uint8_t prefix_bits_count) {
     const auto prefix_bytes_count = (prefix_bits_count + 7) / 8;
-    return PrefixBytes(
-        PrefixBytes(hash.bytes).bytes.subspan(HashBytesCount - prefix_bytes_count, prefix_bytes_count));
+    std::span<const uint8_t> full_span(hash.bytes.data(), HashBytesCount);
+    return MsPrefixBytes(full_span.subspan(HashBytesCount - prefix_bytes_count, prefix_bytes_count));
 }
 
 template<size_t HashBytesCount>
 LsSuffixBytes ls_suffix_bytes(const HashBytes<HashBytesCount>& hash, const uint8_t prefix_bits_count) {
     const auto suffix_bits_count = HashBytesCount * 8 - prefix_bits_count;
     const auto suffix_bytes_count = (suffix_bits_count + 7) / 8;
-    return SuffixBytes(
-        SuffixBytes(hash.bytes).bytes.subspan(0, suffix_bytes_count));
+    std::span<const uint8_t> full_span(hash.bytes.data(), HashBytesCount);
+    return LsSuffixBytes(full_span.subspan(0, suffix_bytes_count));
 }
 
 // ============================================================================
@@ -106,9 +106,9 @@ LsSuffixBytes ls_suffix_bytes(const HashBytes<HashBytesCount>& hash, const uint8
 template<size_t HashBytesCount>
 MsPrefixBytesMasked ms_prefix_bytes_masked(const HashBytes<HashBytesCount>& hash, const uint8_t prefix_bits_count) {
     const auto prefix_bytes_count = (prefix_bits_count + 7) / 8;
-    auto span = prefix_bytes(hash, prefix_bits_count);
+    auto span = ms_prefix_bytes(hash, prefix_bits_count);
 
-    MsPrefixBytesMasked vec(span.begin(), span.end());
+    MsPrefixBytesMasked vec{std::vector<std::uint8_t>(span.begin(), span.end())};
     const auto num_zero_bits = prefix_bytes_count * 8 - prefix_bits_count;
     if (num_zero_bits > 0) {
         // Zero out the lowest unused bits in the least significant byte of the prefix
@@ -120,8 +120,8 @@ MsPrefixBytesMasked ms_prefix_bytes_masked(const HashBytes<HashBytesCount>& hash
 
 template<size_t HashBytesCount>
 LsSuffixBytesMasked ls_suffix_bytes_masked(const HashBytes<HashBytesCount>& hash, const uint8_t prefix_bits_count) {
-    auto span = suffix_bytes(hash, prefix_bits_count);
-    LsSuffixBytesMasked vec(span.begin(), span.end());
+    auto span = ls_suffix_bytes(hash, prefix_bits_count); // Line 123 fixed!
+    LsSuffixBytesMasked vec{std::vector<std::uint8_t>(span.begin(), span.end())};
 
     const auto suffix_bits_count = HashBytesCount * 8 - prefix_bits_count;
     const auto suffix_bytes_count = vec.size();
@@ -148,7 +148,7 @@ MsPrefixIndex ms_prefix_index(const HashBytes<HashBytesCount>& hash, const uint8
     uint64_t msb_window = 0;
     const size_t bytes_to_copy = std::min<size_t>(HashBytesCount, 8);
 
-    std::memcpy(&msb_window, hash.bytes + (HashBytesCount - bytes_to_copy), bytes_to_copy);
+    std::memcpy(&msb_window, hash.bytes.data() + (HashBytesCount - bytes_to_copy), bytes_to_copy);
 
     // Shift window right to align the n-bit prefix to LSB of uint64_t
     const size_t unused_bits_in_window = (bytes_to_copy * 8) - prefix_bits_count;
@@ -167,6 +167,8 @@ constexpr MsPrefixIndex ms_prefix_index_max(const uint8_t prefix_bits_count)
         : ((1ULL << prefix_bits_count) - 1);
     return MsPrefixIndex(max_bits_mask);
 }
+
+constexpr auto HASHES_ORDER_FILENAME = "HashesOrder.bin";
 
 // Make a path such as MsPrefix/12/34/56_LsSuffixEntries.bin for an MsPrefixIndex such as 0x123456
 [[nodiscard]] inline std::filesystem::path make_ms_prefix_path(

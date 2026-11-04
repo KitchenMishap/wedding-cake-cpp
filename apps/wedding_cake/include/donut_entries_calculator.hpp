@@ -53,7 +53,7 @@ public:
     /// Encodes a single entry into a caller-provided byte destination span.
     /// @param out_buffer Output byte span. MUST have at least `hashes_order_entry_size()` bytes!
     /// @return The actual number of bytes written to `out_buffer`.
-    size_t write_hashes_order_file_entry(const HashBytes<HashBytesCount>& hash,
+    size_t write_hashes_order_file_entry(const std::optional<HashBytes<HashBytesCount>>& optional_hash,
                                          uint64_t suffix_index,
                                          uint8_t bytes_per_suffix_index,
                                          std::span<std::uint8_t> out_buffer) const
@@ -62,8 +62,15 @@ public:
         assert(out_buffer.size() >= required_bytes && "write_hashes_order_file_entry(): Output buffer too small for entry!");
         assert(bytes_per_suffix_index <= 8 && "write_hashes_order_file_entry(): Suffix index bytes cannot exceed sizeof(uint64_t)");
 
+        // 0. Special case. If no hash is specified
+        if (optional_hash==std::nullopt) {
+            // Write all ones (FF...). For both suffix index field, and for prefix field. To represent "No Hash"
+            std::memset(out_buffer.data(), 0xFF, required_bytes);
+            return required_bytes;
+        }
+
         // 1. Extract masked prefix bytes and copy directly into destination
-        const auto prefix_masked = ms_prefix_bytes_masked(hash, static_cast<uint8_t>(prefix_bits_count_));
+        const auto prefix_masked = ms_prefix_bytes_masked(optional_hash.value(), static_cast<uint8_t>(prefix_bits_count_));
         std::memcpy(out_buffer.data(), prefix_masked.bytes.data(), prefix_bytes_count_);
 
         // 2. Encode uint64_t suffix_index into the next bytes_per_suffix_index bytes (Little-Endian)
@@ -77,27 +84,33 @@ public:
     // =========================================================================
     // CONVENIENCE VECTOR WRITER (For unit tests / standalone calls)
     // =========================================================================
-    std::vector<std::uint8_t> hashes_order_file_entry(const HashBytes<HashBytesCount>& hash,
+    std::vector<std::uint8_t> hashes_order_file_entry(const std::optional<HashBytes<HashBytesCount>>& optional_hash,
                                                       const uint64_t suffix_index,
                                                       const uint8_t bytes_per_suffix_index) const
     {
         std::vector<std::uint8_t> result(hashes_order_entry_size(bytes_per_suffix_index));
-        write_hashes_order_file_entry(hash, suffix_index, bytes_per_suffix_index, result);
+        auto count = write_hashes_order_file_entry(optional_hash, suffix_index, bytes_per_suffix_index, result);
+        assert(count == result.size() && "write_hashes_order_file_entry(): Failed to write all bytes to output buffer!");
         return result;
     }
 
     /// Encodes a single entry into a caller-provided byte destination span.
     /// @param out_buffer Output byte span. MUST have at least `suffixes_entry_size()` bytes!
     /// @return The actual number of bytes written to `out_buffer`.
-    size_t write_suffixes_file_entry(const HashBytes<HashBytesCount>& hash,
-                                         GlobalPi global_pi,
+    size_t write_suffixes_file_entry(const std::optional<HashBytes<HashBytesCount>>& optional_hash,
+                                         const GlobalPi global_pi,
                                          std::span<std::uint8_t> out_buffer) const
     {
         const size_t required_bytes = suffixes_entry_size();
         assert(out_buffer.size() >= required_bytes && "write_suffixes_file_entry(): Output buffer too small for entry!");
 
+        // 0. Special case. If no hash is provided, there is no output at all
+        if (optional_hash==std::nullopt) {
+            return 0;
+        }
+
         // 1. Extract masked suffix bytes and copy directly into destination
-        const auto suffix_masked = ls_suffix_bytes_masked(hash, static_cast<uint8_t>(prefix_bits_count_));
+        const auto suffix_masked = ls_suffix_bytes_masked(optional_hash.value(), static_cast<uint8_t>(prefix_bits_count_));
         std::memcpy(out_buffer.data(), suffix_masked.bytes.data(), suffix_bytes_count_);
 
         auto local_pi = global_pi - first_global_pi_;

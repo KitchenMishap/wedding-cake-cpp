@@ -47,6 +47,12 @@ public:
     explicit FilesManifestDummy(std::filesystem::path base_path);
     ~FilesManifestDummy();
 
+    // Enable move semantics and prevent accidental copying of stream handles
+    FilesManifestDummy(FilesManifestDummy&&) noexcept = default;
+    FilesManifestDummy& operator=(FilesManifestDummy&&) noexcept = default;
+    FilesManifestDummy(const FilesManifestDummy&) = delete;
+    FilesManifestDummy& operator=(const FilesManifestDummy&) = delete;
+
     [[nodiscard]] bool is_started() const;  // I think this is always true for a constructed FilesManifestDummy?
     [[nodiscard]] bool is_finished_sealed() const;
 
@@ -152,6 +158,7 @@ inline FilesManifestDummy::FileHandle FilesManifestDummy::create_new_file(const 
 inline FilesManifestDummy::~FilesManifestDummy() {
     try {
         flush();
+        open_files_by_handle_.clear();  // ofstream dtors close files
     } catch (...) {
         // Suppress exceptions in destructor to prevent std::terminate()
     }

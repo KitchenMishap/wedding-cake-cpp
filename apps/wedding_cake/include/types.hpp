@@ -43,6 +43,7 @@ using GlobalPi = StrongIndex<GlobalPiTag>;
 struct PiOffset : StrongIndex<PiOffsetTag> {
     using StrongIndex::StrongIndex;
     constexpr PiOffset() noexcept : StrongIndex(0) {} // Default offset is 0
+    explicit PiOffset(const GlobalPi global_pi) noexcept : StrongIndex(global_pi.value) {} // Can convert from GlobalPi
 };
 
 // Standard Sentinels

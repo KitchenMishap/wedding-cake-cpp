@@ -11,9 +11,12 @@ constexpr std::size_t tier_fanout = 1 << tier_fanout_bit_count;
 // How many bytes needed to represent 0..n?
 constexpr std::size_t bytes_for(auto n) noexcept {
     if (n == 0) return 0; // or return 1 depending on whether 0 needs 1 byte
-    int bits = std::bit_width(static_cast<unsigned long long>(n));
+    const int bits = std::bit_width(static_cast<unsigned long long>(n));
     return (bits + 7) / 8;
 }
+
+// How many bytes needed to represent a local_pi in an ingestor donut?
+constexpr std::size_t ingester_donut_local_pi_bytes = bytes_for(ingester_donut_capacity);
 
 // How many bytes to represent a LocalPi in tier n?
 constexpr std::size_t pi_bytes_count_for_tier(auto n) noexcept {
