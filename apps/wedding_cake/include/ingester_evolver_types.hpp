@@ -43,7 +43,7 @@ static constexpr auto ST00 = "Ingester_ST00_RemainderDonut";
 private:
     static bool create_folder_if_needed(const std::filesystem::path& path);
     void hydrate_self_for_evolution() {}    // Nothing needs doing, this state evolves directly from disk
-    void hydrate_self_for_lookup() {}       // ToDo
+    void hydrate_self_for_lookup();
 
     std::vector<std::optional<HashBytes<HashBytesCount>>> forward_lookup_vector_;
     std::map<HashBytes<HashBytesCount>,LocalPi> reverse_lookup_map_;
@@ -86,6 +86,13 @@ inline Ingester_ST00_RemainderDonut<HashBytesCount>::Ingester_ST00_RemainderDonu
         file_handle_hashes_order_ = st00_manifest_.create_new_file(HASHES_ORDER_FILENAME);
         file_handle_suffix_entries_ = st00_manifest_.create_new_file(
             make_ms_prefix_path("", 0, MsPrefixIndex(0)));
+
+        // Write 1-byte header to HashesOrder.bin specifying bytes_per_suffix_index
+        const uint8_t header_byte = ingester_donut_local_pi_bytes;
+        st00_manifest_.append_to_file(
+            file_handle_hashes_order_,
+            std::span<const uint8_t>(&header_byte, 1)
+        );
     }
 }
 
@@ -134,7 +141,8 @@ size_t Ingester_ST00_RemainderDonut<HashBytesCount>::append_hashes(
 
         // Calculate the bytes
         count = donut_entries_calculator_.write_hashes_order_file_entry(
-            *entry_it, (LocalPi(local_pi_int) + first_global_pi_).to_int(), ingester_donut_local_pi_bytes, hashes_order_buffer);
+            // ToDo: local_pi_int here is only correct if NO GAPS IN GlobalPis ever occur!
+            *entry_it, local_pi_int, ingester_donut_local_pi_bytes, hashes_order_buffer);
         // Append count bytes to file
         st00_manifest_.append_to_file(file_handle_hashes_order_, std::span(hashes_order_buffer).first(count));
         ++local_pi_int;
@@ -194,6 +202,103 @@ GlobalPi Ingester_ST00_RemainderDonut<HashBytesCount>::reverse_lookup(HashBytes<
     return it->second + first_global_pi_;
 }
 
+template<size_t HashBytesCount>
+void Ingester_ST00_RemainderDonut<HashBytesCount>::hydrate_self_for_lookup() {
+    forward_lookup_vector_.clear();
+    reverse_lookup_map_.clear();
+
+    const std::filesystem::path order_file_path = st00_path_ / HASHES_ORDER_FILENAME;
+    const std::filesystem::path suffix_file_path = st00_path_ / make_ms_prefix_path("", 0, MsPrefixIndex(0));
+
+    if (!std::filesystem::exists(order_file_path) || !std::filesystem::exists(suffix_file_path)) {
+        // Empty donut state on disk - nothing to hydrate yet
+        return;
+    }
+
+    const size_t order_file_bytes = std::filesystem::file_size(order_file_path);
+    if (order_file_bytes == 0) {
+        return;
+    }
+
+    std::ifstream order_stream(order_file_path, std::ios::binary);
+    std::ifstream suffix_stream(suffix_file_path, std::ios::binary);
+
+    if (!order_stream.is_open() || !suffix_stream.is_open()) {
+        throw std::runtime_error("hydrate_self_for_lookup(): Failed to open ST00 donut files for reading");
+    }
+
+    // -------------------------------------------------------------------------
+    // 1. Read Header Byte 0: bytes_per_suffix_index
+    // -------------------------------------------------------------------------
+    uint8_t bytes_per_suffix_index = 0;
+    order_stream.read(reinterpret_cast<char*>(&bytes_per_suffix_index), 1);
+    if (order_stream.gcount() != 1) {
+        throw std::runtime_error("hydrate_self_for_lookup(): Failed to read header byte from HashesOrder.bin");
+    }
+
+    assert(bytes_per_suffix_index == ingester_donut_local_pi_bytes &&
+           "hydrate_self_for_lookup(): Unexpected bytes_per_suffix_index header byte for Ingester ST00");
+
+    // Compute record bounds based on header byte
+    const size_t order_entry_size = donut_entries_calculator_.hashes_order_entry_size(bytes_per_suffix_index);
+    const size_t payload_bytes = order_file_bytes - 1; // Exclude 1-byte header
+    if (payload_bytes % order_entry_size != 0) {
+        throw std::runtime_error("hydrate_self_for_lookup(): HashesOrder.bin size misaligned with entry size");
+    }
+
+    const size_t num_entries = payload_bytes / order_entry_size;
+    forward_lookup_vector_.reserve(num_entries);
+
+    const size_t suffix_entry_size = donut_entries_calculator_.suffixes_entry_size();
+    std::vector<uint8_t> order_buffer(order_entry_size);
+    std::vector<uint8_t> suffix_buffer(suffix_entry_size);
+
+    typename DonutEntriesCalculator<HashBytesCount>::HashesOrderEntry order_entry;
+    typename DonutEntriesCalculator<HashBytesCount>::LsSuffixEntriesEntry suffix_entry;
+
+    uint64_t expected_next_suffix_index = 0;
+
+    // -------------------------------------------------------------------------
+    // 2. Sequential Reading (Zero Seeks)
+    // -------------------------------------------------------------------------
+    for (size_t i = 0; i < num_entries; ++i) {
+        order_stream.read(reinterpret_cast<char*>(order_buffer.data()), order_entry_size);
+        if (order_stream.gcount() < static_cast<std::streamsize>(order_entry_size)) {
+            throw std::runtime_error("hydrate_self_for_lookup(): Truncated HashesOrder.bin record during hydration");
+        }
+
+        donut_entries_calculator_.read_hashes_order_entry_from_bytes(order_buffer, bytes_per_suffix_index, order_entry);
+
+        if (order_entry.is_sentinel) {
+            forward_lookup_vector_.push_back(std::nullopt);
+            continue;
+        }
+
+        // Enforce invariant: Suffix records must be in strictly sequential order
+        assert(order_entry.suffixes_file_index == expected_next_suffix_index &&
+               "hydrate_self_for_lookup(): Out-of-order suffix index encountered during sequential hydration");
+
+        // Read next entry sequentially from suffix_stream (no seekg call needed!)
+        suffix_stream.read(reinterpret_cast<char*>(suffix_buffer.data()), suffix_entry_size);
+        if (suffix_stream.gcount() < static_cast<std::streamsize>(suffix_entry_size)) {
+            throw std::runtime_error("hydrate_self_for_lookup(): Truncated HashEntries.bin record during hydration");
+        }
+
+        donut_entries_calculator_.read_ls_suffixes_entry_from_bytes(suffix_buffer, suffix_entry);
+
+        // Reconstruct full 32-byte hash
+        HashBytes<HashBytesCount> full_hash = donut_entries_calculator_.hash_from_prefix_suffix(
+            order_entry.ms_prefix_bytes,
+            suffix_entry.ls_suffix_bytes
+        );
+
+        const LocalPi current_local_pi{forward_lookup_vector_.size()};
+        forward_lookup_vector_.push_back(full_hash);
+        reverse_lookup_map_.insert({full_hash, current_local_pi});
+
+        ++expected_next_suffix_index;
+    }
+}
 //---------------------------------------------------------------------------
 // FilledDonut is the Evolver TypeState for a Donut that has reached capacity
 template<size_t HashBytesCount>

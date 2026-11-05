@@ -35,8 +35,9 @@ namespace wedding_cake {
 
 // Strong, non-allocating view wrappers
 struct MsPrefixBytes {
+    MsPrefixBytes() = default; // Add default ctor (binds to empty span)
     explicit MsPrefixBytes(const std::span<const std::uint8_t> span) : bytes(span) {}
-    std::span<const std::uint8_t> bytes;
+    std::span<const std::uint8_t> bytes{};
 
     // Explicit conversions/accessors for convenience
     [[nodiscard]] constexpr auto begin() const { return bytes.begin(); }
@@ -45,8 +46,9 @@ struct MsPrefixBytes {
     constexpr auto operator[](const size_t idx) const { return bytes[idx]; }
 };
 struct LsSuffixBytes {
+    LsSuffixBytes() = default; // Add default ctor (binds to empty span)
     explicit LsSuffixBytes(const std::span<const std::uint8_t> span) : bytes(span) {}
-    std::span<const std::uint8_t> bytes;
+    std::span<const std::uint8_t> bytes{};
 
     [[nodiscard]] constexpr auto begin() const { return bytes.begin(); }
     [[nodiscard]] constexpr auto end() const { return bytes.end(); }

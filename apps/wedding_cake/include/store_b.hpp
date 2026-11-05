@@ -20,6 +20,7 @@ public:
     explicit StoreB(std::filesystem::path base_path);
 
     void feed(uint64_t block_height, const std::vector<std::optional<HashBytes<HashBytesCount>>>& hashes);
+    void flush();
 
     // Satisfy Lookupable concept
     [[nodiscard]] std::optional<HashBytes<HashBytesCount>> forward_lookup(const GlobalPi& global_pi, bool& found) const;
@@ -41,11 +42,15 @@ StoreB<HashBytesCount>::StoreB(std::filesystem::path base_path)
 {
 }
 
-
 template<size_t HashBytesCount>
 void StoreB<HashBytesCount>::feed(
     uint64_t block_height, const std::vector<std::optional<HashBytes<HashBytesCount>>>& hashes) {
     ingester_tier_.feed(block_height, hashes);
+}
+
+template<size_t HashBytesCount>
+void StoreB<HashBytesCount>::flush() {
+    ingester_tier_.flush();
 }
 
 template<size_t HashBytesCount>

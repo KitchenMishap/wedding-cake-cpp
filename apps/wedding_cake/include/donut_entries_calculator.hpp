@@ -4,6 +4,9 @@
 #include <vector>
 #include <cstring>
 #include <cassert>
+#include <bit>
+#include <optional>
+#include <stdexcept>
 
 #include "types.hpp"
 #include "hash_prefix_suffix.hpp"
@@ -16,9 +19,9 @@ namespace wedding_cake {
 // HashesOrder.bin
 // MsPrefix/12/34_LsSuffixEntries.bin
 template<size_t HashBytesCount>
-class DonutEntriesCalculator {
+class DonutEntriesWriteCalculator {
 public:
-    DonutEntriesCalculator(const size_t prefix_bits_count,
+    DonutEntriesWriteCalculator(const size_t prefix_bits_count,
                            const PiOffset first_global_pi,
                            const size_t entries_per_donut)
     : prefix_bits_count_(prefix_bits_count)
@@ -78,6 +81,23 @@ public:
         static_assert(std::endian::native == std::endian::little, "write_hashes_order_file_entry(): Requires Little-Endian architecture");
         std::memcpy(out_buffer.data() + prefix_bytes_count_, &suffix_index, bytes_per_suffix_index);
 
+        // --- DEBUG ASSERTION ---
+        // Verify that a valid suffix_index did not inadvertently encode as all 0xFF (sentinel conflict)
+        {
+            bool suffix_bytes_all_ones = true;
+            for (size_t i = 0; i < bytes_per_suffix_index; ++i) {
+                if (out_buffer[prefix_bytes_count_ + i] != 0xFF) {
+                    suffix_bytes_all_ones = false;
+                    break;
+                }
+            }
+            if (suffix_bytes_all_ones) {
+                std::cout << "Breakpoint here";
+            }
+            assert(!suffix_bytes_all_ones &&
+                   "write_hashes_order_file_entry(): Valid suffix_index collision with 0xFF... sentinel! "
+                   "bytes_per_suffix_index is too small to represent this capacity + sentinel.");
+        }
         return required_bytes;
     }
 
@@ -113,11 +133,11 @@ public:
         const auto suffix_masked = ls_suffix_bytes_masked(optional_hash.value(), static_cast<uint8_t>(prefix_bits_count_));
         std::memcpy(out_buffer.data(), suffix_masked.bytes.data(), suffix_bytes_count_);
 
-        auto local_pi = global_pi - first_global_pi_;
+        auto local_pi_int = (global_pi - first_global_pi_).to_int();
         // 2. Encode uint64_t local_pi into the next bytes_per_local_pi_ bytes (Little-Endian)
         //    On Little-Endian architectures, memcpy'ing the first N bytes of uint64_t extracts LSBs directly!
         static_assert(std::endian::native == std::endian::little, "write_suffixes_file_entry(): Requires Little-Endian architecture");
-        std::memcpy(out_buffer.data() + suffix_bytes_count_, &local_pi, bytes_per_local_pi_);
+        std::memcpy(out_buffer.data() + suffix_bytes_count_, &local_pi_int, bytes_per_local_pi_);
 
         return required_bytes;
     }
@@ -152,7 +172,7 @@ public:
         return bytes_needed;
     }
 
-private:
+protected:
     size_t prefix_bits_count_;
     size_t suffix_bits_count_;
     size_t prefix_bytes_count_;
@@ -160,6 +180,119 @@ private:
     PiOffset first_global_pi_;
     size_t entries_per_donut_;
     uint8_t bytes_per_local_pi_;
+};
+
+// Now we turn our attention to reading entries of the HashesOrder.bin and XX_LsSuffixEntries.bin files.
+template<size_t HashBytesCount>
+class DonutEntriesCalculator : public DonutEntriesWriteCalculator<HashBytesCount> {
+    using Base = DonutEntriesWriteCalculator<HashBytesCount>;
+
+public:
+    DonutEntriesCalculator(size_t prefix_bits_count, PiOffset first_global_pi, size_t entries_per_donut)
+        : Base(prefix_bits_count, first_global_pi, entries_per_donut)
+    {
+    }
+
+    // Zero-allocation span-based struct for HashesOrder.bin entries
+    struct HashesOrderEntry {
+        MsPrefixBytes ms_prefix_bytes;
+        uint64_t suffixes_file_index{0};
+        bool is_sentinel{false}; // True if entry was non-hash 0xFF...
+    };
+
+    // Zero-allocation span-based struct for XX_LsSuffixEntries.bin entries
+    struct LsSuffixEntriesEntry {
+        LsSuffixBytes ls_suffix_bytes;
+        LocalPi local_pi{0};
+    };
+
+    /// Reconstructs the original full HashBytes<HashBytesCount> from masked prefix and suffix bytes.
+    /// Perfectly handles overlapping byte when prefix_bits_count is not a multiple of 8.
+    HashBytes<HashBytesCount> hash_from_prefix_suffix(
+        MsPrefixBytes ms_prefix,
+        LsSuffixBytes ls_suffix) const
+    {
+        HashBytes<HashBytesCount> full_hash{};
+
+        // 1. Copy suffix bytes to LSB side (starts at index 0)
+        std::memcpy(full_hash.bytes.data(), ls_suffix.bytes.data(), this->suffix_bytes_count_);
+
+        // 2. Determine offset where prefix bytes begin (MSB side)
+        const size_t prefix_start_idx = HashBytesCount - this->prefix_bytes_count_;
+
+        if (this->prefix_bits_count_ % 8 == 0) {
+            // Clean alignment: Prefix bytes copy directly to top bytes without byte overlap
+            std::memcpy(full_hash.bytes.data() + prefix_start_idx, ms_prefix.bytes.data(), this->prefix_bytes_count_);
+        } else {
+            // Overlapping byte case:
+            // High bytes of prefix copy directly
+            if (this->prefix_bytes_count_ > 1) {
+                std::memcpy(full_hash.bytes.data() + prefix_start_idx + 1,
+                            ms_prefix.bytes.data() + 1,
+                            this->prefix_bytes_count_ - 1);
+            }
+
+            // The overlap byte combines suffix MSBs and prefix LSBs via bitwise OR
+            full_hash.bytes[prefix_start_idx] |= ms_prefix.bytes[0];
+        }
+
+        return full_hash;
+    }
+
+    /// Reads a single entry from HashesOrder.bin bytes without allocations.
+    void read_hashes_order_entry_from_bytes(
+        std::span<const uint8_t> bytes,
+        uint8_t bytes_per_suffix_index,
+        HashesOrderEntry& target) const
+    {
+        const size_t required = this->hashes_order_entry_size(bytes_per_suffix_index);
+        assert(bytes.size() >= required && "read_hashes_order_entry_from_bytes(): Span too short!");
+
+        // 0. Check for Sentinel "No Hash" state (0xFF across whole entry)
+        bool all_ones = true;
+        for (size_t i = 0; i < required; ++i) {
+            if (bytes[i] != 0xFF) {
+                all_ones = false;
+                break;
+            }
+        }
+
+        if (all_ones) {
+            target.is_sentinel = true;
+            target.ms_prefix_bytes = MsPrefixBytes(bytes.subspan(0, this->prefix_bytes_count_));
+            target.suffixes_file_index = ~0ULL; // Max uint64
+            return;
+        }
+
+        target.is_sentinel = false;
+
+        // 1. Bind prefix view
+        target.ms_prefix_bytes = MsPrefixBytes(bytes.subspan(0, this->prefix_bytes_count_));
+
+        // 2. Decode Little-Endian suffix file index
+        static_assert(std::endian::native == std::endian::little, "Requires Little-Endian architecture");
+        uint64_t val = 0;
+        std::memcpy(&val, bytes.data() + this->prefix_bytes_count_, bytes_per_suffix_index);
+        target.suffixes_file_index = val;
+    }
+
+    /// Reads a single entry from XX_LsSuffixEntries.bin bytes without allocations.
+    void read_ls_suffixes_entry_from_bytes(
+        std::span<const uint8_t> bytes,
+        LsSuffixEntriesEntry& target) const
+    {
+        const size_t required = this->suffixes_entry_size();
+        assert(bytes.size() >= required && "read_ls_suffixes_entry_from_bytes(): Span too short!");
+
+        // 1. Bind suffix view
+        target.ls_suffix_bytes = LsSuffixBytes(bytes.subspan(0, this->suffix_bytes_count_));
+
+        // 2. Decode Little-Endian local_pi
+        static_assert(std::endian::native == std::endian::little, "Requires Little-Endian architecture");
+        size_t local_pi_val = 0;
+        std::memcpy(&local_pi_val, bytes.data() + this->suffix_bytes_count_, this->bytes_per_local_pi_);
+        target.local_pi = LocalPi{local_pi_val};
+    }
 };
 
 } // namespace wedding_cake
