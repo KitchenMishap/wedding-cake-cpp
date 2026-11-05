@@ -37,6 +37,9 @@ static constexpr auto ST00 = "Ingester_ST00_RemainderDonut";
 
     [[nodiscard]] PiOffset next_offset() const;
 
+    std::optional<HashBytes<HashBytesCount>> forward_lookup(GlobalPi global_pi, bool& found) const;
+    GlobalPi reverse_lookup(HashBytes<HashBytesCount> hash) const;
+
 private:
     static bool create_folder_if_needed(const std::filesystem::path& path);
     void hydrate_self_for_evolution() {}    // Nothing needs doing, this state evolves directly from disk
@@ -166,6 +169,31 @@ PiOffset Ingester_ST00_RemainderDonut<HashBytesCount>::next_offset() const {
     return PiOffset{LocalPi(forward_lookup_vector_.size()) + first_global_pi_};
 }
 
+template<size_t HashBytesCount>
+std::optional<HashBytes<HashBytesCount>> Ingester_ST00_RemainderDonut<HashBytesCount>::forward_lookup(
+    GlobalPi global_pi, bool& found) const {
+    if (global_pi.to_int() < first_global_pi_.to_int()) {
+        found = false;
+        return std::nullopt;
+    }
+    if (global_pi.to_int() >= first_global_pi_.to_int() + forward_lookup_vector_.size()) {
+        assert(false && "Shouldn't be asking me?");
+        found = false;
+        return std::nullopt;
+    }
+    found = true;
+    return forward_lookup_vector_[global_pi.to_int() - first_global_pi_.to_int()];
+};
+
+template<size_t HashBytesCount>
+GlobalPi Ingester_ST00_RemainderDonut<HashBytesCount>::reverse_lookup(HashBytes<HashBytesCount> hash) const {
+    auto it = reverse_lookup_map_.find(hash);
+    if (it == reverse_lookup_map_.end()) {
+        return GLOBAL_PI_NO_MATCH;
+    }
+    return it->second + first_global_pi_;
+}
+
 //---------------------------------------------------------------------------
 // FilledDonut is the Evolver TypeState for a Donut that has reached capacity
 template<size_t HashBytesCount>
@@ -188,6 +216,10 @@ public:
     void hydrate_self_for_lookup() {}       // Nothing to do, this state passes lookups to the contained prior_ST00_
 
     [[nodiscard]] const std::filesystem::path& st01_path() const noexcept { return st01_path_; }
+
+    std::optional<HashBytes<HashBytesCount>> forward_lookup(GlobalPi global_pi, bool& found) const;
+    GlobalPi reverse_lookup(HashBytes<HashBytesCount> hash) const;
+
 private:
     Ingester_ST00_RemainderDonut<HashBytesCount> prior_ST00_;
     std::filesystem::path st01_path_;
@@ -208,6 +240,15 @@ inline Ingester_ST01_FilledDonut<HashBytesCount>::Ingester_ST01_FilledDonut(Inge
         // Ingester_ST00_RemainderDonut must IMMEDIATELY be ready to support lookup
         hydrate_self_for_lookup();
     }
+}
+
+template<size_t HashBytesCount>
+std::optional<HashBytes<HashBytesCount>> Ingester_ST01_FilledDonut<HashBytesCount>::forward_lookup(GlobalPi global_pi, bool& found) const {
+    return prior_ST00_.forward_lookup(global_pi, found);
+}
+    template<size_t HashBytesCount>
+GlobalPi Ingester_ST01_FilledDonut<HashBytesCount>::reverse_lookup(HashBytes<HashBytesCount> hash) const {
+    return prior_ST00_.reverse_lookup(hash);
 }
 
 }

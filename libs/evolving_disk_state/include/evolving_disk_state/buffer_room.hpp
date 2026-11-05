@@ -6,7 +6,7 @@
 #include <shared_mutex>
 #include <condition_variable>
 #include <span>
-#include <type_traits>
+#include <stdexcept>
 
 #include "concepts.hpp"
 
@@ -93,7 +93,7 @@ public:
     // Interface 2: Hat Reader / Search Thread (Non-Blocking Point Lookup)
     // -------------------------------------------------------------------------
     template <typename Func>
-    bool with_current_contents(Func&& reader_lambda) {
+    bool with_current_contents(Func&& reader_lambda) const {
         std::unique_lock<std::mutex> state_lock(state_mutex_);
 
         if (is_discarding_) {
@@ -155,9 +155,9 @@ public:
 private:
     // RAII Guard to ensure active_readers_ count is decremented thread-safely
     struct ReaderScope {
-        BufferRoom& room;
+        const BufferRoom& room;
 
-        explicit ReaderScope(BufferRoom& r) : room(r) {
+        explicit ReaderScope(const BufferRoom& r) : room(r) {
             // Must be called while holding room.state_mutex_!
             room.active_readers_++;
         }
@@ -171,14 +171,14 @@ private:
         }
     };
 
-    std::mutex state_mutex_;             // Protects counters, cv predicates, and discard flags
-    std::shared_mutex data_mutex_;       // Protects items_ vector layout during Feed/Read
+    mutable std::mutex state_mutex_;             // Protects counters, cv predicates, and discard flags
+    mutable std::shared_mutex data_mutex_;       // Protects items_ vector layout during Feed/Read
     std::condition_variable cv_producer_;
     std::condition_variable cv_consumer_;
-    std::condition_variable cv_discard_;
+    mutable std::condition_variable cv_discard_;
 
     std::vector<T> items_;
-    std::size_t active_readers_{0};
+    mutable std::size_t active_readers_{0};
     bool is_discarding_{false};
 };
 

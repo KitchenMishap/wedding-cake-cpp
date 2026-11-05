@@ -55,12 +55,19 @@ public:
 
     // Forward lookup requests to buffer
     std::optional<HashBytes<HashBytesCount>> forward_lookup(GlobalPi global_pi, bool& found) const {
-        return ingester_buffer_.forward_lookup(global_pi, found);
-        // ToDo also ask the ingester_tier_folder_
+        auto result = ingester_buffer_.forward_lookup(global_pi, found);
+        if (found) {
+            return result;
+        }
+        result = ingester_tier_folder_.forward_lookup(global_pi, found);
+        return result;
     }
     [[nodiscard]] GlobalPi reverse_lookup(const HashBytes<HashBytesCount>& hash) const {
-        return ingester_buffer_.reverse_lookup(hash);
-        // ToDo also ask the ingester_tier_folder_
+        auto result = ingester_buffer_.reverse_lookup(hash);
+        if (result != GLOBAL_PI_NO_MATCH)
+            return result;
+        result = ingester_tier_folder_.reverse_lookup(hash);
+        return result;
     }
 
 private:

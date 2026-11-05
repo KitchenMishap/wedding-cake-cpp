@@ -76,7 +76,7 @@ static void RunTestSingleHashPresent() {
 }
 
 template <size_t HashBytesCount>
-static void RunTest3x16384Hashes() {
+static void RunTestNx16384Hashes(int N) {
     std::cout << "Running test for Hash size: " << HashBytesCount << "B" << std::endl;
     std::filesystem::path temp_path = "TempTesting_" + std::to_string(HashBytesCount);
     std::filesystem::remove_all(temp_path);
@@ -89,7 +89,7 @@ static void RunTest3x16384Hashes() {
         std::vector<HashBytes<HashBytesCount>> vec_all;
 
         // Three blocks of 16384 hashes
-        for ( size_t i = 0; i < 3; ++i )
+        for ( size_t i = 0; i < N; ++i )
         {
             std::cout << "INSERTING 16384: Block height: " << i << std::endl;
             std::vector<std::optional<HashBytes<HashBytesCount>>> vec;
@@ -109,7 +109,7 @@ static void RunTest3x16384Hashes() {
         EXPECT_EQ(store_b.reverse_lookup(missing_hash), GLOBAL_PI_NO_MATCH)
             << "Expected NO_MATCH for absent hash (Hash size: " << HashBytesCount << "B)";
 
-        for (size_t i = 0; i < 3; ++i) {
+        for (size_t i = 0; i < N; ++i) {
             std::cout << "READING 16384: Block height: " << i << std::endl;
             for (size_t j = 0; j < 16384; ++j) {
                 auto k = i * 16384 + j;
@@ -145,9 +145,14 @@ TEST(WeddingCakeAppTest, RunTestSingleHashPresentB) {
     RunTestSingleHashPresent<64>();
 }
 TEST(WeddingCakeAppTest, RunTestHashes3x16384B) {
-    RunTest3x16384Hashes<20>();
-    RunTest3x16384Hashes<32>();
-    RunTest3x16384Hashes<64>();
+    RunTestNx16384Hashes<20>(3);
+    RunTestNx16384Hashes<32>(3);
+    RunTestNx16384Hashes<64>(3);
+}
+TEST(WeddingCakeAppTest, RunTestHashes4x16384B) {
+    RunTestNx16384Hashes<20>(4);
+    RunTestNx16384Hashes<32>(4);
+    RunTestNx16384Hashes<64>(4);
 }
 
 } // namespace wedding_cake
