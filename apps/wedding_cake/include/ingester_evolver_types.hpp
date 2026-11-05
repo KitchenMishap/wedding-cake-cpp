@@ -128,22 +128,22 @@ size_t Ingester_ST00_RemainderDonut<HashBytesCount>::append_hashes(
         && "append_hashes(): Hashes order buffer too small somehow");
     std::array<uint8_t, max_plausible_hashes_order_entry> hashes_order_buffer;
 
-    // Look at every entry in the batch
     auto local_pi_int = forward_lookup_vector_.size();
+    uint64_t next_suffix_file_index = reverse_lookup_map_.size(); // Count of actual hashes written so far
     for (auto entry_it = ram_buffer.begin(); entry_it != ram_buffer.begin() + taking; ++entry_it) {
-        // Calculate the bytes
         auto count = donut_entries_calculator_.write_suffixes_file_entry(
             *entry_it, LocalPi(local_pi_int) + first_global_pi_, suffix_buffer);
-        // Append count bytes to file (count can be zero if no hash is specified)
+
+        uint64_t suffix_index_to_record = ~0ULL;
+
         if (count > 0) {
             st00_manifest_.append_to_file(file_handle_suffix_entries_, std::span(suffix_buffer).first(count));
+            suffix_index_to_record = next_suffix_file_index++; // Advance ONLY when a real hash was written
         }
 
-        // Calculate the bytes
         count = donut_entries_calculator_.write_hashes_order_file_entry(
-            // ToDo: local_pi_int here is only correct if NO GAPS IN GlobalPis ever occur!
-            *entry_it, local_pi_int, ingester_donut_local_pi_bytes, hashes_order_buffer);
-        // Append count bytes to file
+            *entry_it, suffix_index_to_record, ingester_donut_local_pi_bytes, hashes_order_buffer);
+
         st00_manifest_.append_to_file(file_handle_hashes_order_, std::span(hashes_order_buffer).first(count));
         ++local_pi_int;
     }

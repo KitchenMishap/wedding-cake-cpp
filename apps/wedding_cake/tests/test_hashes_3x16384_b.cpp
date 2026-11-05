@@ -59,7 +59,7 @@ static void RunTestSingleHashAbsent() {
 
 template <size_t HashBytesCount>
 static void RunTestSingleHashPresent() {
-#    // Append the size to the path to keep concurrent/sequential tests isolated
+    // Append the size to the path to keep concurrent/sequential tests isolated
     std::filesystem::path temp_path = "TempTesting_" + std::to_string(HashBytesCount);
     std::filesystem::remove_all(temp_path);
 
@@ -75,6 +75,40 @@ static void RunTestSingleHashPresent() {
 
         EXPECT_EQ(store_b.reverse_lookup(inserted_hash), GlobalPi(0))
             << "Expected GlobalPi(0) for inserted hash (Hash size: " << HashBytesCount << "B)";
+    }
+
+    // Clean up directory after a successful test run
+    std::filesystem::remove_all(temp_path);
+}
+
+template <size_t HashBytesCount>
+static void RunTestSingleHashGapB() {
+    // Append the size to the path to keep concurrent/sequential tests isolated
+    std::filesystem::path temp_path = "TempTesting_" + std::to_string(HashBytesCount);
+    std::filesystem::remove_all(temp_path);
+
+    { // Braces so StoreB dtor called before remove_all()
+        StoreB<HashBytesCount> store_b(temp_path);
+
+        DeterministicHashGenerator<HashBytesCount> gen;
+        auto inserted_hash = gen.make_random_hash();
+        auto block_height = 0;
+        std::vector<std::optional<HashBytes<HashBytesCount>>> vec;
+        vec.push_back(std::nullopt);      // A gap first
+        vec.push_back(inserted_hash);       // Then the hash
+        store_b.feed(block_height, vec);
+
+        // Forward lookups
+        bool found;
+        auto opt_hash = store_b.forward_lookup(GlobalPi(0), found);
+        EXPECT_EQ(found, true) << "Expected found==true even though it's a gap (Hash size: " << HashBytesCount << "B)";
+        EXPECT_EQ(opt_hash, std::nullopt) << "Expected opt_hash==std::nullopt because it's a gap (Hash size: " << HashBytesCount << "B)";
+        opt_hash = store_b.forward_lookup(GlobalPi(1), found);
+        EXPECT_EQ(found, true) << "Expected found==true for inserted hash (Hash size: " << HashBytesCount << "B)";
+        EXPECT_EQ(opt_hash, inserted_hash) << "Expected inserted_hash at GlobalPi(1) (Hash size: " << HashBytesCount << "B)";
+        // Reverse lookup
+        EXPECT_EQ(store_b.reverse_lookup(inserted_hash), GlobalPi(1))
+            << "Expected GlobalPi(1) for inserted hash (Hash size: " << HashBytesCount << "B)";
     }
 
     // Clean up directory after a successful test run
@@ -203,25 +237,30 @@ TEST(WeddingCakeAppTest, RunTestSingleHashPresentB) {
     RunTestSingleHashPresent<32>();
     RunTestSingleHashPresent<64>();
 }
-    TEST(WeddingCakeAppTest, RunTestHashes3x16384B) {
-        RunTestNx16384Hashes<20>(3, false);
-        RunTestNx16384Hashes<32>(3, false);
-        RunTestNx16384Hashes<64>(3, false);
-    }
-    TEST(WeddingCakeAppTest, RunTestHashes4x16384B) {
-        RunTestNx16384Hashes<20>(4, false);
-        RunTestNx16384Hashes<32>(4, false);
-        RunTestNx16384Hashes<64>(4, false);
-    }
-    TEST(WeddingCakeAppTest, RunTestHashes3x16384B_with_gaps) {
-        RunTestNx16384Hashes<20>(3, true);
-        RunTestNx16384Hashes<32>(3, true);
-        RunTestNx16384Hashes<64>(3, true);
-    }
-    TEST(WeddingCakeAppTest, RunTestHashes4x16384B_with_gaps_) {
-        RunTestNx16384Hashes<20>(4, true);
-        RunTestNx16384Hashes<32>(4, true);
-        RunTestNx16384Hashes<64>(4, true);
-    }
+TEST(WeddingCakeAppTest, RunTestSingleHashGapB) {
+    RunTestSingleHashGapB<20>();
+    RunTestSingleHashGapB<32>();
+    RunTestSingleHashGapB<64>();
+}
+TEST(WeddingCakeAppTest, RunTestHashes3x16384B) {
+    RunTestNx16384Hashes<20>(3, false);
+    RunTestNx16384Hashes<32>(3, false);
+    RunTestNx16384Hashes<64>(3, false);
+}
+TEST(WeddingCakeAppTest, RunTestHashes4x16384B) {
+    RunTestNx16384Hashes<20>(4, false);
+    RunTestNx16384Hashes<32>(4, false);
+    RunTestNx16384Hashes<64>(4, false);
+}
+TEST(WeddingCakeAppTest, RunTestHashes3x16384B_with_gaps) {
+    RunTestNx16384Hashes<20>(3, true);
+    RunTestNx16384Hashes<32>(3, true);
+    RunTestNx16384Hashes<64>(3, true);
+}
+TEST(WeddingCakeAppTest, RunTestHashes4x16384B_with_gaps_) {
+    RunTestNx16384Hashes<20>(4, true);
+    RunTestNx16384Hashes<32>(4, true);
+    RunTestNx16384Hashes<64>(4, true);
+}
 
 } // namespace wedding_cake
