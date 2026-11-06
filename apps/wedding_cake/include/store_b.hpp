@@ -10,6 +10,7 @@
 #include <stdexcept>
 
 #include "ingester.hpp"
+#include "mishap_assert.hpp"
 
 namespace wedding_cake {
 
@@ -23,7 +24,9 @@ public:
     void flush();
 
     // Satisfy Lookupable concept
-    [[nodiscard]] std::optional<HashBytes<HashBytesCount>> forward_lookup(const GlobalPi& global_pi, bool& found) const;
+    [[nodiscard]] GlobalPi first_offset() const;
+    [[nodiscard]] GlobalPi next_offset() const;
+    [[nodiscard]] std::optional<HashBytes<HashBytesCount>> forward_lookup(const GlobalPi& global_pi) const;
     [[nodiscard]] GlobalPi reverse_lookup(const HashBytes<HashBytesCount>& hash) const;
 
 private:
@@ -54,17 +57,24 @@ void StoreB<HashBytesCount>::flush() {
 }
 
 template<size_t HashBytesCount>
-std::optional<HashBytes<HashBytesCount>> StoreB<HashBytesCount>::forward_lookup(const GlobalPi& global_pi, bool& found) const {
-    auto result = ingester_tier_.forward_lookup(global_pi, found);
-    if (found) {return result;}
-    // ToDo: Try subsequent tiers
+GlobalPi StoreB<HashBytesCount>::first_offset() const {
+    // ToDo: Change this to the oldest tier when others implemented
+    return ingester_tier_.first_offset();
+}
+
+template<size_t HashBytesCount>
+GlobalPi StoreB<HashBytesCount>::next_offset() const {
+    return ingester_tier_.next_offset();    // The ingestor tier is the youngest
+}
+
+template<size_t HashBytesCount>
+std::optional<HashBytes<HashBytesCount>> StoreB<HashBytesCount>::forward_lookup(const GlobalPi& global_pi) const {
+    MISHAP_ASSERT(false, "Sorry! Not implemented until we have a Foreperson");
     return std::nullopt;
 }
 template<size_t HashBytesCount>
 GlobalPi StoreB<HashBytesCount>::reverse_lookup(const HashBytes<HashBytesCount>& hash) const {
-    auto result = ingester_tier_.reverse_lookup(hash);
-    if (result!= GLOBAL_PI_NO_MATCH) {return result;}
-    // ToDo: Try subsequent tiers
+    MISHAP_ASSERT(false, "Sorry! Not implemented until we have a Foreperson");
     return GLOBAL_PI_NO_MATCH;
 }
 

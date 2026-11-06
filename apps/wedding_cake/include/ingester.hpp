@@ -53,22 +53,16 @@ public:
         ingester_buffer_.flush();
     }
 
-    // Forward lookup requests to buffer
-    std::optional<HashBytes<HashBytesCount>> forward_lookup(GlobalPi global_pi, bool& found) const {
-        auto result = ingester_buffer_.forward_lookup(global_pi, found);
-        if (found) {
-            return result;
-        }
-        result = ingester_tier_folder_.forward_lookup(global_pi, found);
-        return result;
-    }
-    [[nodiscard]] GlobalPi reverse_lookup(const HashBytes<HashBytesCount>& hash) const {
-        auto result = ingester_buffer_.reverse_lookup(hash);
-        if (result != GLOBAL_PI_NO_MATCH)
-            return result;
-        result = ingester_tier_folder_.reverse_lookup(hash);
-        return result;
-    }
+    // ToDo reconsider
+    [[nodiscard]] GlobalPi first_offset() const {
+        // The ingester_tier_folder is older, but may be empty
+        return ingester_tier_folder_.first_offset();
+    }  // The ingester_tier_folder is older
+    // ToDo reconsider
+    [[nodiscard]] GlobalPi next_offset() const {
+        // The ingester_buffer is
+        return ingester_buffer_.next_offset();
+    }         // The ingested_buffer is newer
 
 private:
     // Member declaration order matters!
@@ -83,12 +77,9 @@ private:
     static uint64_t get_downstream_remaining_capacity(const IngesterTierFolder<HashBytesCount>& ingester_tier_folder) {
         return ingester_tier_folder.hatchling().remaining_capacity();
     }
-    static PiOffset get_downstream_next_offset(const IngesterTierFolder<HashBytesCount>& ingester_tier_folder) {
+    static GlobalPi get_downstream_next_offset(const IngesterTierFolder<HashBytesCount>& ingester_tier_folder) {
         return ingester_tier_folder.hatchling().next_offset();
     }
 };
-
-static_assert(Lookupable<Ingester<32>, 32>,
-          "Ingester<32> must fulfill the Lookupable concept!");
 
 } // namespace wedding_cake

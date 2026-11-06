@@ -5,6 +5,8 @@ project(wedding_cake CXX)
 add_executable(wedding_cake
         src/main.cpp
         include/concepts_lookup.hpp
+        include/lookupable_buffer_room.hpp
+        include/mishap_assert.hpp
 )
 
 # Statically link the C++ standard library so the user doesn't need to install it

@@ -6,6 +6,7 @@
 #include <evolving_disk_state/tier_folder.hpp>
 
 #include "ingester_tier_hydrator.hpp"
+#include "lookupable_buffer_room.hpp"
 
 namespace wedding_cake {
 
@@ -28,23 +29,29 @@ public:
     void promote_hatchling_and_spawn_next();    // Worker's responsibility to call this when hatchling is full
     void flush_manifest_to_disk();
 
-    std::optional<HashBytes<HashBytesCount>> forward_lookup(GlobalPi global_pi, bool& found) const;
-    GlobalPi reverse_lookup(HashBytes<HashBytesCount> hash) const;
+    // ToDo reconsider...
+    [[nodiscard]] GlobalPi first_offset() const {
+        // Normally the buffer room would tell us, being older, but it might be empty
+        if (!buffer_room_.empty()) {
+            return buffer_room_.first_offset();
+        }
+        return hatchling_.first_offset();
+    }
+    // ToDo reconsider...
+    [[nodiscard]] GlobalPi next_offset() const {return hatchling_.next_offset();}
 
 private:
     std::filesystem::path tier_path_;
     const std::vector<uint64_t> sorted_offsets_found_at_startup_;
 
     Ingester_ST00_RemainderDonut<HashBytesCount> hatchling_;
-    evolving_disk_state::BufferRoom<Ingester_ST01_FilledDonut<HashBytesCount>, tier_fanout> buffer_room_;
+    LookupableBufferRoom<Ingester_ST01_FilledDonut<HashBytesCount>, tier_fanout, HashBytesCount> buffer_room_;
 
     static std::vector<uint64_t> find_sorted_offsets(const std::filesystem::path& tier_path);
     static Ingester_ST00_RemainderDonut<HashBytesCount> create_or_hydrate_hatchling(
         const std::filesystem::path& tier_path, const std::vector<uint64_t>& sorted_offsets_found);
     void hydrate_buffer_room(const std::filesystem::path& tier_path, const std::vector<uint64_t>& sorted_offsets_found);
 };
-
-static_assert(Lookupable<IngesterTierFolder<32>, 32>);
 
 template<size_t HashBytesCount>
 inline IngesterTierFolder<HashBytesCount>::IngesterTierFolder(const std::filesystem::path& base_path)
@@ -116,58 +123,6 @@ inline void IngesterTierFolder<HashBytesCount>::promote_hatchling_and_spawn_next
 template<size_t HashBytesCount>
 inline void IngesterTierFolder<HashBytesCount>::flush_manifest_to_disk() {
     // ToDo
-}
-
-template<size_t HashBytesCount>
-std::optional<HashBytes<HashBytesCount>> IngesterTierFolder<HashBytesCount>::forward_lookup(GlobalPi global_pi, bool &found) const {
-    // First check hatchling_
-    auto result = hatchling_.forward_lookup(global_pi, found);
-    if (found) {
-        return result;
-    }
-
-    // 2. Then check BufferRoom contents under shared reader lock
-    const bool executed = buffer_room_.with_current_contents([&](auto view) {
-        for (const auto& donut : view) {
-            result = donut.forward_lookup(global_pi, found);
-            if (found) {
-                return; // Early exit once found in a buffer room entry
-            }
-        }
-    });
-
-    // If buffer_room_ was in a discarding/shutting-down state, set found to false
-    if (!executed) {
-        found = false;
-        return std::nullopt;
-    }
-
-    return result;
-}
-
-template<size_t HashBytesCount>
-inline GlobalPi IngesterTierFolder<HashBytesCount>::reverse_lookup(HashBytes<HashBytesCount> hash) const {
-    // First look in hatchling_
-    auto result = hatchling_.reverse_lookup(hash);
-    if (result != GLOBAL_PI_NO_MATCH)
-        return result;
-
-    // Then look un buffer_room_ under shared reader lock
-    const bool executed = buffer_room_.with_current_contents([&](auto view) {
-        for (const auto& donut : view) {
-            result = donut.reverse_lookup(hash);
-            if (result != GLOBAL_PI_NO_MATCH) {
-                return; // Early exit once found in a buffer room entry
-            }
-        }
-    });
-
-    // If buffer_room_ was in a discarding/shutting-down state, set found to false
-    if (!executed) {
-        return GLOBAL_PI_NO_MATCH;
-    }
-
-    return result;
 }
 
 }

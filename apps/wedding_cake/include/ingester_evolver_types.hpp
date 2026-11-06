@@ -33,11 +33,13 @@ static constexpr auto ST00 = "Ingester_ST00_RemainderDonut";
     // Returns the number of hashes consumed from ram_buffer
     size_t append_hashes(IngesterBuffer<HashBytesCount>::BatchType& ram_buffer); // Worker must then promote if full
     [[nodiscard]] size_t capacity() const {return capacity_;}
+    // ToDo redundant? capacity() - next_offset() - first_offset()?
     [[nodiscard]] size_t remaining_capacity() const { return capacity_ - forward_lookup_vector_.size(); }
 
-    [[nodiscard]] PiOffset next_offset() const;
+    [[nodiscard]] GlobalPi first_offset() const {return first_global_pi_;}
+    [[nodiscard]] GlobalPi next_offset() const {return first_global_pi_ + LocalPi(forward_lookup_vector_.size());}
 
-    std::optional<HashBytes<HashBytesCount>> forward_lookup(GlobalPi global_pi, bool& found) const;
+    std::optional<HashBytes<HashBytesCount>> forward_lookup(GlobalPi global_pi) const;
     GlobalPi reverse_lookup(HashBytes<HashBytesCount> hash) const;
 
 private:
@@ -50,7 +52,7 @@ private:
 
     size_t capacity_;
     std::filesystem::path object_path_;
-    PiOffset first_global_pi_;
+    GlobalPi first_global_pi_;
     std::filesystem::path st00_path_;
     bool hydration_required_;
     files_manifest::FilesManifestDummy st00_manifest_;
@@ -58,6 +60,8 @@ private:
     files_manifest::FilesManifestDummy::FileHandle file_handle_hashes_order_;
     files_manifest::FilesManifestDummy::FileHandle file_handle_suffix_entries_;
 };
+
+static_assert(Lookupable<Ingester_ST00_RemainderDonut<32>,32>);
 
 template<size_t HashBytesCount>
 inline Ingester_ST00_RemainderDonut<HashBytesCount>::Ingester_ST00_RemainderDonut(
@@ -171,25 +175,10 @@ size_t Ingester_ST00_RemainderDonut<HashBytesCount>::append_hashes(
     return taking;
 }
 
-// next_offset() is the global offset of the next hash to be ingested
-template<size_t HashBytesCount>
-PiOffset Ingester_ST00_RemainderDonut<HashBytesCount>::next_offset() const {
-    return PiOffset{LocalPi(forward_lookup_vector_.size()) + first_global_pi_};
-}
-
 template<size_t HashBytesCount>
 std::optional<HashBytes<HashBytesCount>> Ingester_ST00_RemainderDonut<HashBytesCount>::forward_lookup(
-    GlobalPi global_pi, bool& found) const {
-    if (global_pi.to_int() < first_global_pi_.to_int()) {
-        found = false;
-        return std::nullopt;
-    }
-    if (global_pi.to_int() >= first_global_pi_.to_int() + forward_lookup_vector_.size()) {
-        assert(false && "Shouldn't be asking me?");
-        found = false;
-        return std::nullopt;
-    }
-    found = true;
+        GlobalPi global_pi) const {
+    assert(contains_pi(*this, global_pi) && "forward_lookup(): Calling container should check bounds");
     return forward_lookup_vector_[global_pi.to_int() - first_global_pi_.to_int()];
 };
 
@@ -322,13 +311,18 @@ public:
 
     [[nodiscard]] const std::filesystem::path& st01_path() const noexcept { return st01_path_; }
 
-    std::optional<HashBytes<HashBytesCount>> forward_lookup(GlobalPi global_pi, bool& found) const;
-    GlobalPi reverse_lookup(HashBytes<HashBytesCount> hash) const;
+    [[nodiscard]] GlobalPi first_offset() const noexcept { return prior_ST00_.first_offset(); }
+    [[nodiscard]] GlobalPi next_offset() const noexcept { return prior_ST00_.next_offset(); }
+
+    [[nodiscard]] std::optional<HashBytes<HashBytesCount>> forward_lookup(GlobalPi global_pi) const;
+    [[nodiscard]] GlobalPi reverse_lookup(HashBytes<HashBytesCount> hash) const;
 
 private:
     Ingester_ST00_RemainderDonut<HashBytesCount> prior_ST00_;
     std::filesystem::path st01_path_;
 };
+
+static_assert(Lookupable<Ingester_ST01_FilledDonut<32>,32>);
 
 template<size_t HashBytesCount>
 inline Ingester_ST01_FilledDonut<HashBytesCount>::Ingester_ST01_FilledDonut(Ingester_ST00_RemainderDonut<HashBytesCount>&& prior_state)
@@ -348,10 +342,10 @@ inline Ingester_ST01_FilledDonut<HashBytesCount>::Ingester_ST01_FilledDonut(Inge
 }
 
 template<size_t HashBytesCount>
-std::optional<HashBytes<HashBytesCount>> Ingester_ST01_FilledDonut<HashBytesCount>::forward_lookup(GlobalPi global_pi, bool& found) const {
-    return prior_ST00_.forward_lookup(global_pi, found);
+std::optional<HashBytes<HashBytesCount>> Ingester_ST01_FilledDonut<HashBytesCount>::forward_lookup(GlobalPi global_pi) const {
+    return prior_ST00_.forward_lookup(global_pi);
 }
-    template<size_t HashBytesCount>
+template<size_t HashBytesCount>
 GlobalPi Ingester_ST01_FilledDonut<HashBytesCount>::reverse_lookup(HashBytes<HashBytesCount> hash) const {
     return prior_ST00_.reverse_lookup(hash);
 }

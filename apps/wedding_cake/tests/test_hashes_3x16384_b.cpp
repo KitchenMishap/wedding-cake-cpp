@@ -100,11 +100,9 @@ static void RunTestSingleHashGapB() {
 
         // Forward lookups
         bool found;
-        auto opt_hash = store_b.forward_lookup(GlobalPi(0), found);
-        EXPECT_EQ(found, true) << "Expected found==true even though it's a gap (Hash size: " << HashBytesCount << "B)";
+        auto opt_hash = store_b.forward_lookup(GlobalPi(0));
         EXPECT_EQ(opt_hash, std::nullopt) << "Expected opt_hash==std::nullopt because it's a gap (Hash size: " << HashBytesCount << "B)";
-        opt_hash = store_b.forward_lookup(GlobalPi(1), found);
-        EXPECT_EQ(found, true) << "Expected found==true for inserted hash (Hash size: " << HashBytesCount << "B)";
+        opt_hash = store_b.forward_lookup(GlobalPi(1));
         EXPECT_EQ(opt_hash, inserted_hash) << "Expected inserted_hash at GlobalPi(1) (Hash size: " << HashBytesCount << "B)";
         // Reverse lookup
         EXPECT_EQ(store_b.reverse_lookup(inserted_hash), GlobalPi(1))
@@ -116,7 +114,7 @@ static void RunTestSingleHashGapB() {
 }
 
 template <size_t HashBytesCount>
-static void RunTestNx16384Hashes(int N, bool with_gaps) {
+static void RunTestNx16384Hashes(int hashes_count, int block_size, bool with_gaps) {
     std::cout << "Running test for Hash size: " << HashBytesCount << "B" << std::endl;
     std::filesystem::path temp_path = "TempTesting_" + std::to_string(HashBytesCount);
     std::filesystem::remove_all(temp_path);
@@ -127,29 +125,35 @@ static void RunTestNx16384Hashes(int N, bool with_gaps) {
     { // Braces so StoreB dtor called before remove_all()
         StoreB<HashBytesCount> store_b(temp_path);
 
-        // Three blocks of 16384 hashes
-        for ( size_t i = 0; i < N; ++i )
+        int block_height = 0;
+        std::vector<std::optional<HashBytes<HashBytesCount>>> vec;
+        for ( size_t i = 0; i < hashes_count; ++i )
         {
-            std::cout << "INSERTING 16384: Block height: " << i << std::endl;
-            std::vector<std::optional<HashBytes<HashBytesCount>>> vec;
+            if (i % 16384 == 0) {
+                std::cout << "INSERTING hashindex " << i << " blockindex " << block_height << std::endl;
+            }
 
-            for ( size_t j = 0; j < 16384; ++j )
-            {
-                auto inserted_hash = gen.make_random_hash();
-                if (with_gaps) {
-                    if (inserted_hash[1] == 0x00) {
-                        vec.push_back(std::nullopt);        // Occasional gaps
-                        vec_all.push_back(std::nullopt);
-                    } else {
-                        vec.push_back(inserted_hash);
-                        vec_all.push_back(inserted_hash);
-                    }
+            auto inserted_hash = gen.make_random_hash();
+            if (with_gaps) {
+                if (inserted_hash[1] == 0x00) {
+                    vec.push_back(std::nullopt);        // Occasional gaps
+                    vec_all.push_back(std::nullopt);
                 } else {
                     vec.push_back(inserted_hash);
                     vec_all.push_back(inserted_hash);
                 }
+            } else {
+                vec.push_back(inserted_hash);
+                vec_all.push_back(inserted_hash);
             }
-            auto block_height = i;
+            if (i % block_size == 0) {
+                store_b.feed(block_height, vec);
+                block_height++;
+                vec.clear();
+            }
+        }
+        if (hashes_count % block_size != 0) {
+            // Last drabs
             store_b.feed(block_height, vec);
         }
 
@@ -158,28 +162,24 @@ static void RunTestNx16384Hashes(int N, bool with_gaps) {
         EXPECT_EQ(store_b.reverse_lookup(missing_hash), GLOBAL_PI_NO_MATCH)
             << "Expected NO_MATCH for absent hash (Hash size: " << HashBytesCount << "B)";
 
-        for (size_t i = 0; i < N; ++i) {
-            std::cout << "READING 16384 (without closing): Block height: " << i << std::endl;
-            for (size_t j = 0; j < 16384; ++j) {
-                auto k = i * 16384 + j;
+        for (size_t i = 0; i < hashes_count; ++i) {
+            if (i % 16384 == 0) {
+                std::cout << "READING (before reload) hashindex " << i << std::endl;
+            }
 
-                // Forward lookup
-                bool found;
-                auto hash = store_b.forward_lookup(GlobalPi(k), found);
-                EXPECT_TRUE(found)
-                    << "Expected forward lookup to find GlobalPi's hash (Hash size: " << HashBytesCount << "B)";
-                // CAN check the gaps, expect std::nullopt==std::nullopt
-                if (vec_all[k].has_value()) {
-                    EXPECT_EQ(hash, vec_all[k].value())
-                        << "Expected forward lookup to match GlobalPi's hash (Hash size: " << HashBytesCount << "B)";
-                }
+            // Forward lookup
+            auto hash = store_b.forward_lookup(GlobalPi(i));
+            // CAN check the gaps, expect std::nullopt==std::nullopt
+            if (vec_all[i].has_value()) {
+                EXPECT_EQ(hash, vec_all[i].value())
+                    << "Expected forward lookup to match GlobalPi's hash (Hash size: " << HashBytesCount << "B)";
+            }
 
-                // Reverse lookup
-                // Can't check the gaps, have no hash!
-                if (vec_all[k].has_value()) {
-                    EXPECT_EQ(store_b.reverse_lookup(vec_all[k].value()), GlobalPi(k))
-                        << "Expected reverse lookup to match hash's presentation index (Hash size: " << HashBytesCount << "B)";
-                }
+            // Reverse lookup
+            // Can't check the gaps, have no hash!
+            if (vec_all[i].has_value()) {
+                EXPECT_EQ(store_b.reverse_lookup(vec_all[i].value()), GlobalPi(i))
+                    << "Expected reverse lookup to match hash's presentation index (Hash size: " << HashBytesCount << "B)";
             }
         }
         store_b.flush();
@@ -194,28 +194,24 @@ static void RunTestNx16384Hashes(int N, bool with_gaps) {
         EXPECT_EQ(store_b.reverse_lookup(missing_hash), GLOBAL_PI_NO_MATCH)
             << "Expected NO_MATCH for absent hash (Hash size: " << HashBytesCount << "B)";
 
-        for (size_t i = 0; i < N; ++i) {
-            std::cout << "READING 16384 (after closing and re-opening): Block height: " << i << std::endl;
-            for (size_t j = 0; j < 16384; ++j) {
-                auto k = i * 16384 + j;
+        for (size_t i = 0; i < hashes_count; ++i) {
+            if (i % 16384 == 0) {
+                std::cout << "READING (after reload) hashindex " << i << std::endl;
+            }
 
-                // Forward lookup
-                bool found;
-                auto hash = store_b.forward_lookup(GlobalPi(k), found);
-                EXPECT_TRUE(found)
-                    << "Expected forward lookup to find GlobalPi's hash (Hash size: " << HashBytesCount << "B)";
-                // CAN check the gaps, expect std::nullopt==std::nullopt
-                if (vec_all[k].has_value()) {
-                    EXPECT_EQ(hash, vec_all[k].value())
-                        << "Expected forward lookup to match GlobalPi's hash (Hash size: " << HashBytesCount << "B)";
-                }
+            // Forward lookup
+            auto hash = store_b.forward_lookup(GlobalPi(i));
+            // CAN check the gaps, expect std::nullopt==std::nullopt
+            if (vec_all[i].has_value()) {
+                EXPECT_EQ(hash, vec_all[i].value())
+                    << "Expected forward lookup to match GlobalPi's hash (Hash size: " << HashBytesCount << "B)";
+            }
 
-                // Reverse lookup
-                // Can't check the gaps, have no hash!
-                if (vec_all[k].has_value()) {
-                    EXPECT_EQ(store_b.reverse_lookup(vec_all[k].value()), GlobalPi(k))
-                        << "Expected reverse lookup to match hash's presentation index (Hash size: " << HashBytesCount << "B)";
-                }
+            // Reverse lookup
+            // Can't check the gaps, have no hash!
+            if (vec_all[i].has_value()) {
+                EXPECT_EQ(store_b.reverse_lookup(vec_all[i].value()), GlobalPi(i))
+                    << "Expected reverse lookup to match hash's presentation index (Hash size: " << HashBytesCount << "B)";
             }
         }
     }   // store_b destructed again
@@ -242,25 +238,41 @@ TEST(WeddingCakeAppTest, RunTestSingleHashGapB) {
     RunTestSingleHashGapB<32>();
     RunTestSingleHashGapB<64>();
 }
-TEST(WeddingCakeAppTest, RunTestHashes3x16384B) {
-    RunTestNx16384Hashes<20>(3, false);
-    RunTestNx16384Hashes<32>(3, false);
-    RunTestNx16384Hashes<64>(3, false);
+// 3 * 16384 hashes, 16384 each block, only tests the ingester buffer
+TEST(WeddingCakeAppTest, RunTestHashesIngester) {
+    RunTestNx16384Hashes<20>(3 * 16384, 16384, false);
+    RunTestNx16384Hashes<32>(3 * 16384, 16384, true);
+    RunTestNx16384Hashes<64>(3 * 16384, 16384, false);
 }
-TEST(WeddingCakeAppTest, RunTestHashes4x16384B) {
-    RunTestNx16384Hashes<20>(4, false);
-    RunTestNx16384Hashes<32>(4, false);
-    RunTestNx16384Hashes<64>(4, false);
+// 3 * 16384 hashes, 7 each block, only tests the ingester buffer
+TEST(WeddingCakeAppTest, RunTestHashesIngesterSmallBlocks) {
+    RunTestNx16384Hashes<20>(3 * 16384, 7, true);
+    RunTestNx16384Hashes<32>(3 * 16384, 7, false);
+    RunTestNx16384Hashes<64>(3 * 16384, 7, true);
 }
-TEST(WeddingCakeAppTest, RunTestHashes3x16384B_with_gaps) {
-    RunTestNx16384Hashes<20>(3, true);
-    RunTestNx16384Hashes<32>(3, true);
-    RunTestNx16384Hashes<64>(3, true);
+// 3 * 16384 hashes, 66000 each block, only tests the ingester buffer
+TEST(WeddingCakeAppTest, RunTestHashesIngesterBigBlocks) {
+    RunTestNx16384Hashes<20>(3 * 16384, 66000, false);
+    RunTestNx16384Hashes<32>(3 * 16384, 66000, true);
+    RunTestNx16384Hashes<64>(3 * 16384, 66000, false);
 }
-TEST(WeddingCakeAppTest, RunTestHashes4x16384B_with_gaps_) {
-    RunTestNx16384Hashes<20>(4, true);
-    RunTestNx16384Hashes<32>(4, true);
-    RunTestNx16384Hashes<64>(4, true);
+// 65536 hashes, tests the ingester buffer and ingester_tier_folder's hatchling
+TEST(WeddingCakeAppTest, RunTestHashesHatchling) {
+    RunTestNx16384Hashes<20>(65536, 16384, true);
+    RunTestNx16384Hashes<32>(65536, 16384, false);
+    RunTestNx16384Hashes<64>(65536, 16384, true);
+}
+// 65535 * 4 hashes, tests the ingester buffer and ingester_tier_folder's buffer room
+TEST(WeddingCakeAppTest, RunTestHashesIngesterBufferRoom) {
+    RunTestNx16384Hashes<20>(65535 * 4, 66000, false);
+    RunTestNx16384Hashes<32>(65535 * 4, 66000, true);
+    RunTestNx16384Hashes<64>(65535 * 4, 66000, false);
+}
+// 65535 * 5 hashes, should block unless there is a tier after ingester tier
+TEST(WeddingCakeAppTest, RunTestHashesIngesterNextTier) {
+    RunTestNx16384Hashes<20>(65535 * 5, 66000, true);
+    RunTestNx16384Hashes<32>(65535 * 5, 66000, false);
+    RunTestNx16384Hashes<64>(65535 * 5, 66000, true);
 }
 
 } // namespace wedding_cake

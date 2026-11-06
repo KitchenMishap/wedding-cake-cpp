@@ -9,6 +9,7 @@
 #include "types.hpp"
 
 namespace wedding_cake {
+/* depracated
 
 // ============================================================================
 // 1. SUBSTORE CONCEPT
@@ -100,6 +101,6 @@ concept HashStoreConcept = requires(T hs, HashBytes<HashBytesCount> hash, Global
     // Full forward & reverse lookups
     { hs.ForwardLookup(gpi) } -> std::same_as<std::optional<std::vector<uint8_t>>>;
     { hs.ReverseLookup(hash) } -> std::same_as<GlobalPi>;
-};
+};*/
 
 } // namespace wedding_cake

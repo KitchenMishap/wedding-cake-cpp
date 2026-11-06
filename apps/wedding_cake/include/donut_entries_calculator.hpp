@@ -22,7 +22,7 @@ template<size_t HashBytesCount>
 class DonutEntriesWriteCalculator {
 public:
     DonutEntriesWriteCalculator(const size_t prefix_bits_count,
-                           const PiOffset first_global_pi,
+                           const GlobalPi first_global_pi,
                            const size_t entries_per_donut)
     : prefix_bits_count_(prefix_bits_count)
     , suffix_bits_count_(HashBytesCount * 8 - prefix_bits_count)
@@ -177,7 +177,7 @@ protected:
     size_t suffix_bits_count_;
     size_t prefix_bytes_count_;
     size_t suffix_bytes_count_;
-    PiOffset first_global_pi_;
+    GlobalPi first_global_pi_;
     size_t entries_per_donut_;
     uint8_t bytes_per_local_pi_;
 };
@@ -188,7 +188,7 @@ class DonutEntriesCalculator : public DonutEntriesWriteCalculator<HashBytesCount
     using Base = DonutEntriesWriteCalculator<HashBytesCount>;
 
 public:
-    DonutEntriesCalculator(size_t prefix_bits_count, PiOffset first_global_pi, size_t entries_per_donut)
+    DonutEntriesCalculator(size_t prefix_bits_count, GlobalPi first_global_pi, size_t entries_per_donut)
         : Base(prefix_bits_count, first_global_pi, entries_per_donut)
     {
     }

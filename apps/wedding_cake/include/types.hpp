@@ -35,43 +35,49 @@ struct StrongIndex {
 // -----------------------------------------------------------------------------
 struct LocalPiTag {};
 struct GlobalPiTag {};
-struct PiOffsetTag {};
 
 using LocalPi  = StrongIndex<LocalPiTag>;
 using GlobalPi = StrongIndex<GlobalPiTag>;
-
-struct PiOffset : StrongIndex<PiOffsetTag> {
-    using StrongIndex::StrongIndex;
-    constexpr PiOffset() noexcept : StrongIndex(0) {} // Default offset is 0
-    explicit PiOffset(const GlobalPi global_pi) noexcept : StrongIndex(global_pi.value) {} // Can convert from GlobalPi
-};
 
 // Standard Sentinels
 constexpr LocalPi  LOCAL_PI_NO_MATCH{PI_NO_MATCH_VAL};
 constexpr GlobalPi GLOBAL_PI_NO_MATCH{PI_NO_MATCH_VAL};
 
 // -----------------------------------------------------------------------------
-// Strongly-Typed Translation Operators
+// Strongly-Typed Translation Operators (LocalPi <-> GlobalPi)
 // -----------------------------------------------------------------------------
 
-// LocalPi + PiOffset -> GlobalPi
-[[nodiscard]] constexpr GlobalPi operator+(LocalPi local, PiOffset offset) noexcept {
-    if (local.is_no_match()) return GLOBAL_PI_NO_MATCH;
-    return GlobalPi(local.value + offset.value);
+// LocalPi + GlobalPi (base offset) -> GlobalPi
+[[nodiscard]] constexpr GlobalPi operator+(LocalPi local, GlobalPi base_offset) noexcept {
+    if (local.is_no_match() || base_offset.is_no_match()) return GLOBAL_PI_NO_MATCH;
+    return GlobalPi(local.to_int() + base_offset.to_int());
 }
 
-// GlobalPi - PiOffset -> LocalPi
-[[nodiscard]] constexpr LocalPi operator-(GlobalPi global, PiOffset offset) noexcept {
-    if (global.is_no_match() || global.value < offset.value) return LOCAL_PI_NO_MATCH;
-    return LocalPi(global.value - offset.value);
+[[nodiscard]] constexpr GlobalPi operator+(GlobalPi base_offset, LocalPi local) noexcept {
+    return local + base_offset;
 }
 
-// GlobalPi - GlobalPi -> PiOffset
-[[nodiscard]] constexpr PiOffset operator-(GlobalPi a, GlobalPi b) noexcept {
-    if (a.is_no_match() || b.is_no_match() || a.value < b.value) return PiOffset(0);
-    return PiOffset(a.value - b.value);
+// GlobalPi - GlobalPi (base offset) -> LocalPi
+[[nodiscard]] constexpr LocalPi operator-(GlobalPi target, GlobalPi base_offset) noexcept {
+    if (target.is_no_match() || base_offset.is_no_match() || target.to_int() < base_offset.to_int()) {
+        return LOCAL_PI_NO_MATCH;
+    }
+    return LocalPi(target.to_int() - base_offset.to_int());
 }
 
+// GlobalPi - LocalPi -> GlobalPi
+[[nodiscard]] constexpr GlobalPi operator-(GlobalPi target, LocalPi local) noexcept {
+    if (target.is_no_match() || local.is_no_match() || target.to_int() < local.to_int()) {
+        return GLOBAL_PI_NO_MATCH;
+    }
+    return GlobalPi(target.to_int() - local.to_int());
+}
+
+// GlobalPi - GlobalPi -> uint64_t (Distance / Delta count)
+[[nodiscard]] constexpr uint64_t distance(GlobalPi high, GlobalPi low) noexcept {
+    if (high.is_no_match() || low.is_no_match() || high.to_int() < low.to_int()) return 0;
+    return high.to_int() - low.to_int();
+}
 // -----------------------------------------------------------------------------
 // Hash Structures
 // -----------------------------------------------------------------------------

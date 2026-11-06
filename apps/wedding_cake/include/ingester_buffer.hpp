@@ -6,11 +6,10 @@
 #include <cassert>
 #include <concepts>
 #include <condition_variable>
-#include <cstdint>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <vector>
-#include <utility>
 
 #include "concepts_lookup.hpp"
 
@@ -24,7 +23,7 @@ public:
 
     /// @param initial_downstream_remaining_capacity Query from downstream Remainder at startup (e.g., remainder.remaining_capacity())
     /// @param initial_first_global_pi Query from downstream Remainder at startup (e.g., remainder.next_offset())
-    explicit IngesterBuffer(size_t initial_downstream_remaining_capacity, PiOffset initial_first_global_pi)
+    explicit IngesterBuffer(size_t initial_downstream_remaining_capacity, const GlobalPi initial_first_global_pi)
         : downstream_remaining_capacity_(initial_downstream_remaining_capacity)
         , first_global_pi_(initial_first_global_pi) {
         assert(downstream_remaining_capacity_ > 0
@@ -134,7 +133,7 @@ public:
         downstream_remaining_capacity_ = new_remaining_capacity;
 
         // 4. Update our first_global_pi_ which has now changed
-        first_global_pi_ = PiOffset(first_global_pi_.to_int() + buffer_size_sent);
+        first_global_pi_ = GlobalPi(first_global_pi_.to_int() + buffer_size_sent);
 
         // 5. Empty the reverse lookup map too
         reverse_lookup_map_.clear();
@@ -157,22 +156,22 @@ public:
         std::shared_lock<std::shared_mutex> lock(mutex_);
         return downstream_remaining_capacity_;
     }
+    //---------------------------
+    // Support Lookupable concept
+    //---------------------------
+    GlobalPi first_offset() const {
+        return first_global_pi_;
+    }
 
-    std::optional<HashBytes<HashBytesCount>> forward_lookup(GlobalPi global_pi, bool& found) const {
+    GlobalPi next_offset() const {
+        return first_global_pi_ + LocalPi(buffer_.size());
+    }
+
+    std::optional<HashBytes<HashBytesCount>> forward_lookup(GlobalPi global_pi) const {
         std::shared_lock<std::shared_mutex> lock(mutex_);
-        if (global_pi.to_int() < first_global_pi_.to_int()) {
-            // Need to look further downstream (older hashes)
-            found = false;
-            return std::nullopt;
-        }
-        if (global_pi.to_int() >= first_global_pi_.to_int() + buffer_.size()) {
-            // Specified global_pi hasn't even arrived yet
-            found = false;
-            return std::nullopt;
-        }
-        const auto local_pi = global_pi - first_global_pi_;
-        found = true;
-        return buffer_[local_pi.to_int()];
+        assert(contains_pi(*this, global_pi));
+        const auto local_pi_int = distance(global_pi, first_global_pi_);
+        return buffer_[local_pi_int];
     }
 
     GlobalPi reverse_lookup(const HashBytes<HashBytesCount>& hash) const {
@@ -188,7 +187,7 @@ private:
     size_t downstream_remaining_capacity_;
     BatchType buffer_;
     std::map<HashBytes<HashBytesCount>, LocalPi> reverse_lookup_map_;
-    PiOffset first_global_pi_;
+    GlobalPi first_global_pi_;
 
     mutable std::shared_mutex mutex_;
     std::condition_variable_any can_feed_cv_;
@@ -200,6 +199,6 @@ private:
 };
 
 static_assert(Lookupable<IngesterBuffer<32>, 32>,
-              "IngesterBuffer<32> must fulfill the Lookupable concept!");
+              "IngesterBuffer<32> must fulfill the Lookupable concept");
 
 } // namespace wedding_cake
