@@ -6,6 +6,7 @@ add_executable(test_wedding_cake_app
 #        ms_prefix_path_test.cpp
         test_create_empty_B.cpp
         test_hashes_3x16384_b.cpp
+        test_ingest_only.cpp
 )
 
 target_include_directories(test_wedding_cake_app PRIVATE ../include)

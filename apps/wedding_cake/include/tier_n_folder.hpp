@@ -176,7 +176,7 @@ std::unique_ptr<TierNFolder<HashBytesCount>> hydrate_tier_if_exists(
         return nullptr;
     }
     // Looks like non-empty tier exists
-    return std::make_unique<TierNFolder<HashBytesCount>>(tier_index, tier_folder_path);
+    return std::make_unique<TierNFolder<HashBytesCount>>(tier_index, base_path);
 }
 
 } // namespace wedding_cake

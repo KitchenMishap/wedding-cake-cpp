@@ -2,7 +2,9 @@
 // Purpose: Provides shared lock access for concurrent readers/bakers during work slices.
 // Purpose: Enforces exclusive locks only when "turning out the lights" to wipe the buffer.
 
+
 #pragma once
+/* Depracated
 #include <vector>
 #include <shared_mutex>
 #include <mutex>
@@ -104,4 +106,4 @@ private:
     mutable std::shared_mutex mutex_;
     std::condition_variable_any cv_provider_;
     mutable std::condition_variable_any cv_reader_consumer_;
-};
+};*/

@@ -43,7 +43,7 @@ public:
     void feed_block_of_hashes(BatchType block) {
         if (block.empty()) return;
 
-        std::unique_lock<std::shared_mutex> lock(mutex_);
+        std::unique_lock lock(mutex_);
 
         // Backpressure: Block while queued RAM items meet or exceed current target capacity
         can_feed_cv_.wait(lock, [this]() {
@@ -74,7 +74,7 @@ public:
     /// Requests an immediate flush of queued hashes (e.g., end-of-stream signal).
     /// BLOCKS until the worker processes the batch and completes physical flush.
     void flush() {
-        std::unique_lock<std::shared_mutex> lock(mutex_);
+        std::unique_lock lock(mutex_);
         if (buffer_.empty()) return;
 
         please_flush_ = true;
@@ -88,7 +88,7 @@ public:
     /// Wakes all waiting threads for clean pipeline shutdown.
     void stop() {
         {
-            std::lock_guard<std::shared_mutex> lock(mutex_);
+            std::lock_guard lock(mutex_);
             stopping_ = true;
             please_flush_ = false;
         }
@@ -110,7 +110,7 @@ public:
     requires std::invocable<Func, BatchType&, bool> &&
              std::same_as<std::invoke_result_t<Func, BatchType&, bool>, size_t>
     void with_at_least_n_hashes(Func&& func) {
-        std::unique_lock<std::shared_mutex> lock(mutex_);
+        std::unique_lock lock(mutex_);
 
         // 1. Wait until buffer reaches current target capacity OR a flush is requested
         has_items_cv_.wait(lock, [this]() {
@@ -149,34 +149,36 @@ public:
     }
 
     [[nodiscard]] size_t size() const {
-        std::shared_lock<std::shared_mutex> lock(mutex_);
+        std::lock_guard lock(mutex_);
         return buffer_.size();
     }
 
     [[nodiscard]] size_t downstream_remaining_capacity() const {
-        std::shared_lock<std::shared_mutex> lock(mutex_);
+        std::lock_guard lock(mutex_);
         return downstream_remaining_capacity_;
     }
     //---------------------------
     // Support Lookupable concept
     //---------------------------
     GlobalPi first_offset() const {
+        std::lock_guard lock(mutex_);
         return first_global_pi_;
     }
 
     GlobalPi next_offset() const {
+        std::lock_guard lock(mutex_);
         return first_global_pi_ + LocalPi(buffer_.size());
     }
 
     std::optional<HashBytes<HashBytesCount>> forward_lookup(GlobalPi global_pi) const {
-        std::shared_lock<std::shared_mutex> lock(mutex_);
+        std::lock_guard lock(mutex_);
         assert(contains_pi(*this, global_pi));
         const auto local_pi_int = distance(global_pi, first_global_pi_);
         return buffer_[local_pi_int];
     }
 
     GlobalPi reverse_lookup(const HashBytes<HashBytesCount>& hash) const {
-        std::shared_lock<std::shared_mutex> lock(mutex_);
+        std::lock_guard lock(mutex_);
         auto it = reverse_lookup_map_.find(hash);
         if (it != reverse_lookup_map_.end()) {
             return it->second + first_global_pi_;
@@ -190,10 +192,10 @@ private:
     std::map<HashBytes<HashBytesCount>, LocalPi> reverse_lookup_map_;
     GlobalPi first_global_pi_;
 
-    mutable std::shared_mutex mutex_;
-    std::condition_variable_any can_feed_cv_;
-    std::condition_variable_any has_items_cv_;
-    std::condition_variable_any flush_done_cv_;
+    mutable std::mutex mutex_;
+    std::condition_variable can_feed_cv_;
+    std::condition_variable has_items_cv_;
+    std::condition_variable flush_done_cv_;
 
     bool please_flush_{false};
     bool stopping_{false};
