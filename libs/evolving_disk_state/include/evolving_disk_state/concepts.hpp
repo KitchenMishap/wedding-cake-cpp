@@ -2,6 +2,7 @@
 
 #include <concepts>
 #include <span>
+#include <stop_token>
 #include <type_traits>
 #include <utility>
 
@@ -22,9 +23,9 @@ namespace evolving_disk_state::concepts {
     // -----------------------------------------------------------------------------
     // The downstream consumer inspects items via a scoped span lambda and discards them.
     template <typename Buffer, typename T>
-    concept BufferOutput = requires(Buffer& buffer) {
+    concept BufferOutput = requires(Buffer& buffer, std::stop_token stop_token) {
         // 1. Access via with_contents lambda passing std::span<const T>
-        buffer.with_contents_when_filled([](std::span<const T> items) {
+        buffer.with_contents_when_filled(stop_token, [](std::span<const T> items) {
         });
 
         // 2. Discard blocks until all active readers exit, then purges buffer & disk

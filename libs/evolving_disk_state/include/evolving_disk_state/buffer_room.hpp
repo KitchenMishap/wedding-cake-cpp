@@ -1,12 +1,14 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 #include <mutex>
-#include <shared_mutex>
 #include <condition_variable>
+#include <functional>
 #include <span>
 #include <stdexcept>
+#include <stop_token>
 
 #include "concepts.hpp"
 
@@ -17,22 +19,30 @@ class BufferRoom {
 public:
     using value_type = T;
     static constexpr std::size_t capacity = C;
+    using OnFullCallback = std::function<void()>;
 
     BufferRoom() = default;
     ~BufferRoom() = default;
 
-    // Non-copyable, non-movable
+    explicit BufferRoom(OnFullCallback on_full_cb)
+        : on_full_cb_(std::move(on_full_cb)) {}
+
+    void set_on_full_callback(OnFullCallback on_full_cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        on_full_cb_ = std::move(on_full_cb);
+    }
+
     BufferRoom(const BufferRoom&) = delete;
     BufferRoom& operator=(const BufferRoom&) = delete;
 
-    //---------------
-    // Initialization
-    //---------------
+    // -------------------------------------------------------------------------
+    // Initialization (Single-threaded startup)
+    // -------------------------------------------------------------------------
     void InitializeAdd(T item) {
+        std::lock_guard<std::mutex> lock(mutex_);
         if (items_.size() >= capacity) {
             throw std::invalid_argument("BufferRoom::InitializeAdd(): buffer room already at capacity");
         }
-        std::unique_lock<std::shared_mutex> data_lock(data_mutex_);
         items_.push_back(std::move(item));
     }
 
@@ -40,21 +50,19 @@ public:
     // Upstream Producer: Feed
     // -------------------------------------------------------------------------
     void Feed(T item) {
-        std::unique_lock<std::mutex> state_lock(state_mutex_);
+        std::unique_lock<std::mutex> lock(mutex_);
 
-        // Block if full or if a discard operation is purging the buffer
-        cv_producer_.wait(state_lock, [this]() {
-            return items_.size() < C && !is_discarding_;
+        // Wait until there is space AND no readers are inspecting the buffer
+        cv_producer_.wait(lock, [this]() {
+            return items_.size() < C && active_readers_ == 0;
         });
 
-        // Acquire EXCLUSIVE lock on data array before push_back
-        {
-            std::unique_lock<std::shared_mutex> data_lock(data_mutex_);
-            items_.push_back(std::move(item));
-        }
+        items_.push_back(std::move(item));
 
-        // Notify waiting tier workers if capacity C is reached
         if (items_.size() == C) {
+            if (on_full_cb_) {
+                on_full_cb_();
+            }
             cv_consumer_.notify_all();
         }
     }
@@ -63,29 +71,32 @@ public:
     // Interface 1: Tier Ingestion Worker (Blocking Batch Rendezvous)
     // -------------------------------------------------------------------------
     template <typename Func>
-    bool with_contents_when_filled(Func&& worker_lambda) {
-        std::unique_lock<std::mutex> state_lock(state_mutex_);
+    bool with_contents_when_filled(std::stop_token stop_token, Func&& worker_lambda) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        const uint64_t entry_epoch = discard_epoch_;
 
-        // BLOCK until buffer holds C items OR a discard is explicitly initiated
-        cv_consumer_.wait(state_lock, [this]() {
-            return items_.size() == C || is_discarding_;
-        });
+        auto is_ready = [this, entry_epoch]() {
+            return items_.size() == C || discard_epoch_ != entry_epoch;
+        };
 
-        if (is_discarding_) {
-            return false; // Discard/shutdown requested!
+        // Fast-path if stop_token isn't associated with a stop_source (e.g. unit tests)
+        if (stop_token.stop_possible()) {
+            cv_consumer_.wait(lock, stop_token, is_ready);
+        } else {
+            cv_consumer_.wait(lock, is_ready);
         }
 
-        // RAII Reader Registration (increments active_readers_ under state_lock)
+        // Exit cleanly if stopped OR if a Discard() happened while we were waiting
+        if (stop_token.stop_requested() || discard_epoch_ != entry_epoch || items_.size() < C) {
+            return false;
+        }
+
+        // Register active reader (prevents Feed/Discard from mutating items_ while unlocked)
         ReaderScope reader(*this);
-        state_lock.unlock(); // Drop state lock during user lambda execution!
+        std::span<const T, C> fixed_view(items_.data(), C);
 
-        // Acquire SHARED lock on data array for duration of worker_lambda
-        {
-            std::shared_lock<std::shared_mutex> data_lock(data_mutex_);
-            std::span<const T, C> fixed_view(items_.data(), C);
-            worker_lambda(fixed_view);
-        }
-
+        lock.unlock();
+        worker_lambda(fixed_view);
         return true;
     }
 
@@ -94,22 +105,14 @@ public:
     // -------------------------------------------------------------------------
     template <typename Func>
     bool with_current_contents(Func&& reader_lambda) const {
-        std::unique_lock<std::mutex> state_lock(state_mutex_);
+        std::unique_lock<std::mutex> lock(mutex_);
 
-        if (is_discarding_) {
-            return false;
-        }
-
-        // RAII Reader Registration
+        // Register active reader so multiple readers run concurrently without holding mutex_
         ReaderScope reader(*this);
-        state_lock.unlock(); // Drop state lock during user lambda execution!
+        std::span<const T> current_view(items_.data(), items_.size());
 
-        {
-            std::shared_lock<std::shared_mutex> data_lock(data_mutex_);
-            std::span<const T> current_view(items_.data(), items_.size());
-            reader_lambda(current_view);
-        }
-
+        lock.unlock();
+        reader_lambda(current_view);
         return true;
     }
 
@@ -117,89 +120,58 @@ public:
     // Lifecycle Transition: Discard
     // -------------------------------------------------------------------------
     void Discard() {
-        std::unique_lock<std::mutex> state_lock(state_mutex_);
+        std::unique_lock<std::mutex> lock(mutex_);
 
-        is_discarding_ = true;
-
-        // Wake up any waiting tier workers so they can unblock cleanly
+        // Advance epoch so any sleeping consumers immediately know a discard occurred
+        ++discard_epoch_;
         cv_consumer_.notify_all();
 
-        // Wait for all active readers (both workers and hat readers) to exit
-        cv_discard_.wait(state_lock, [this]() {
+        // Wait until all active readers (workers & hat readers) finish reading
+        cv_discard_.wait(lock, [this]() {
             return active_readers_ == 0;
         });
 
-        // Release state_lock BEFORE acquiring exclusive data_lock to prevent mutex ordering inversions!
-        state_lock.unlock();
+        // Move items out locally so disk I/O (purge_from_disk) runs outside the mutex
+        std::vector<T> to_purge = std::move(items_);
+        items_.clear();
 
-        // Acquire EXCLUSIVE lock on data before clearing vector
-        {
-            std::unique_lock<std::shared_mutex> data_lock(data_mutex_);
-
-            for (auto& item : items_) {
-                if constexpr (requires(const T& obj) { obj.purge_from_disk(); }) {
-                    item.purge_from_disk();
-                }
-            }
-            items_.clear();
-        }
-
-        // Re-acquire state_lock to reset is_discarding_ and notify producers
-        state_lock.lock();
-        is_discarding_ = false;
-
-        // Wake up producers waiting in Feed()
+        // Wake up producers blocked in Feed()
         cv_producer_.notify_all();
+
+        lock.unlock();
+        for (const auto& item : to_purge) {
+            if constexpr (requires(const T& obj) { obj.purge_from_disk(); }) {
+                item.purge_from_disk();
+            }
+        }
     }
 
 private:
-    // RAII Guard to ensure active_readers_ count is decremented thread-safely
     struct ReaderScope {
         const BufferRoom& room;
 
         explicit ReaderScope(const BufferRoom& r) : room(r) {
-            // Must be called while holding room.state_mutex_!
-            room.active_readers_++;
+            ++room.active_readers_;
         }
 
         ~ReaderScope() {
-            std::unique_lock<std::mutex> lock(room.state_mutex_);
-            room.active_readers_--;
-            if (room.active_readers_ == 0 && room.is_discarding_) {
+            std::lock_guard<std::mutex> lock(room.mutex_);
+            if (--room.active_readers_ == 0) {
                 room.cv_discard_.notify_all();
+                room.cv_producer_.notify_all();
             }
         }
     };
 
-    mutable std::mutex state_mutex_;             // Protects counters, cv predicates, and discard flags
-    mutable std::shared_mutex data_mutex_;       // Protects items_ vector layout during Feed/Read
-    std::condition_variable cv_producer_;
-    std::condition_variable cv_consumer_;
+    OnFullCallback on_full_cb_;
+    mutable std::mutex mutex_;
+    mutable std::condition_variable cv_producer_;
+    std::condition_variable_any cv_consumer_;
     mutable std::condition_variable cv_discard_;
 
     std::vector<T> items_;
     mutable std::size_t active_readers_{0};
-    bool is_discarding_{false};
+    uint64_t discard_epoch_{0};
 };
 
-// 1. Declare a mock or actual move-only item type used in your tier
-struct MockSealedItem {
-    MockSealedItem(MockSealedItem&&) noexcept = default;
-    MockSealedItem& operator=(MockSealedItem&&) noexcept = default;
-
-    MockSealedItem(const MockSealedItem&) = delete;
-    MockSealedItem& operator=(const MockSealedItem&) = delete;
-};
-
-// 2. Define the concrete Buffer type
-using TestBuffer = BufferRoom<MockSealedItem, 4>;
-
-// 3. Static Assert
-static_assert(concepts::BufferInput<TestBuffer, MockSealedItem>,
-    "BufferRoom must satisfy the BufferInput concept");
-static_assert(concepts::BufferOutput<TestBuffer, MockSealedItem>,
-    "BufferRoom must satisfy BufferOutput concept");
-static_assert(concepts::BufferReadable<TestBuffer, MockSealedItem>,
-    "BufferRoom must satisfy BufferReadable concept");
-
-} // namespace evolving_disk_state
+}

@@ -310,6 +310,7 @@ public:
     void hydrate_self_for_lookup() {}       // Nothing to do, this state passes lookups to the contained prior_ST00_
 
     [[nodiscard]] const std::filesystem::path& st01_path() const noexcept { return st01_path_; }
+    const Ingester_ST00_RemainderDonut<HashBytesCount>& prior_st00() const noexcept {return prior_ST00_;}
 
     [[nodiscard]] GlobalPi first_offset() const noexcept { return prior_ST00_.first_offset(); }
     [[nodiscard]] GlobalPi next_offset() const noexcept { return prior_ST00_.next_offset(); }

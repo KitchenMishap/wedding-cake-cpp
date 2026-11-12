@@ -47,28 +47,21 @@ private:
     Ingester_ST00_RemainderDonut<HashBytesCount> hatchling_;
     LookupableBufferRoom<Ingester_ST01_FilledDonut<HashBytesCount>, tier_fanout, HashBytesCount> buffer_room_;
 
-    static std::vector<uint64_t> find_sorted_offsets(const std::filesystem::path& tier_path);
     static Ingester_ST00_RemainderDonut<HashBytesCount> create_or_hydrate_hatchling(
         const std::filesystem::path& tier_path, const std::vector<uint64_t>& sorted_offsets_found);
     void hydrate_buffer_room(const std::filesystem::path& tier_path, const std::vector<uint64_t>& sorted_offsets_found);
 };
 
+static std::vector<uint64_t> find_sorted_offsets_or_create_folder(const std::filesystem::path &tier_path);
+
 template<size_t HashBytesCount>
 inline IngesterTierFolder<HashBytesCount>::IngesterTierFolder(const std::filesystem::path& base_path)
     : tier_path_(base_path / Folder)
-    , sorted_offsets_found_at_startup_(find_sorted_offsets(tier_path_))
+    , sorted_offsets_found_at_startup_(find_sorted_offsets_or_create_folder(tier_path_))
     , hatchling_(create_or_hydrate_hatchling(tier_path_, sorted_offsets_found_at_startup_))
     , buffer_room_()
 {
     hydrate_buffer_room(tier_path_, sorted_offsets_found_at_startup_);
-}
-
-template<size_t HashBytesCount>
-std::vector<uint64_t> IngesterTierFolder<HashBytesCount>::find_sorted_offsets(const std::filesystem::path &tier_path) {
-    // This is our first chance to create the folder if it doesn't exist
-    std::filesystem::create_directories(tier_path);
-    // Finds and sorts offsets NNN based on subfolders named Offset_NNN/
-    return evolving_disk_state::object_folder_offsets(tier_path);
 }
 
 template<size_t HashBytesCount>
@@ -82,6 +75,7 @@ inline Ingester_ST00_RemainderDonut<HashBytesCount> IngesterTierFolder<HashBytes
     }
     const auto highest_offset = sorted_offsets_found.back();
     const auto hatchling_object_path = tier_path / evolving_disk_state::object_folder_name(highest_offset);
+    // ToDo: What if it has evolved?
     return Ingester_ST00_RemainderDonut<HashBytesCount>(hatchling_object_path, ingester_donut_capacity);
 }
 
@@ -124,5 +118,14 @@ template<size_t HashBytesCount>
 inline void IngesterTierFolder<HashBytesCount>::flush_manifest_to_disk() {
     // ToDo
 }
+
+inline std::vector<uint64_t> find_sorted_offsets_or_create_folder(const std::filesystem::path &tier_path) {
+    // This is our first chance to create the folder if it doesn't exist
+    std::filesystem::create_directories(tier_path);
+    // Finds and sorts offsets NNN based on subfolders named Offset_NNN/
+    return evolving_disk_state::object_folder_offsets(tier_path);
+}
+
+
 
 }

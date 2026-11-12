@@ -2,11 +2,21 @@
 #include <bit>
 #include <cstddef>
 
+// ToDo Put these constants in UPPER_SNAKE_CASE
+
 // How many hashes can a tier 0 donut hold?
 constexpr std::size_t ingester_donut_capacity = 65535;
 // How many tier N donuts make a tier N+1 donut?
 constexpr std::size_t tier_fanout_bit_count = 2;
 constexpr std::size_t tier_fanout = 1 << tier_fanout_bit_count;
+
+constexpr std::size_t tier_n_donut_capacity(size_t n) {
+    auto capacity = ingester_donut_capacity;
+    for (int i = 0; i < n; ++i) {
+        capacity *= tier_fanout;
+    }
+    return capacity;
+}
 
 // How many bytes needed to represent 0..n?
 constexpr std::size_t bytes_for(auto n) noexcept {

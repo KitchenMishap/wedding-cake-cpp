@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "concepts_manifest.hpp"
+#include "mishap_assert.hpp"
 
 // files_manifest is a system for creating and writing append-only files to a disk folder
 // (and subfolders) in a stateful recoverable commit / flush / recover manner.
@@ -44,7 +45,7 @@ public:
     constexpr static FileHandle InvalidFileHandle = -1;
 
     // Create a FilesManifestDummy object to start or continue a manifest session for an existing folder on disk.
-    explicit FilesManifestDummy(std::filesystem::path base_path);
+    explicit FilesManifestDummy(const std::filesystem::path& base_path);
     ~FilesManifestDummy();
 
     // Enable move semantics and prevent accidental copying of stream handles
@@ -78,7 +79,7 @@ private:
 
 static_assert(ManifestLike<FilesManifestDummy>);
 
-inline FilesManifestDummy::FilesManifestDummy(std::filesystem::path base_path)
+inline FilesManifestDummy::FilesManifestDummy(const std::filesystem::path& base_path)
 : base_path_(base_path)
 , next_file_handle_(0)
 , finished_sealed_(false)
@@ -192,6 +193,7 @@ inline void FilesManifestDummy::open_file(FileHandle handle) {
 inline void FilesManifestDummy::append_to_file(const FileHandle handle, std::span<const uint8_t> bytes) {
     assert((!finished_sealed_) && "append_to_file(): Cannot append to file after finish_and_seal()");
     if (!open_files_by_handle_.contains(handle)) {
+        MISHAP_ASSERT(false, "append_to_file(): File is not open");
         throw std::runtime_error("append_to_file(): File is not open");
     }
 

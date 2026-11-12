@@ -8,6 +8,7 @@
 #include <optional>
 #include <stdexcept>
 
+#include "exceptions.hpp"
 #include "types.hpp"
 #include "hash_prefix_suffix.hpp"
 
@@ -214,25 +215,62 @@ public:
     {
         HashBytes<HashBytesCount> full_hash{};
 
-        // 1. Copy suffix bytes to LSB side (starts at index 0)
+        // 1. Copy suffix bytes starting at LSB (byte offset 0)
         std::memcpy(full_hash.bytes.data(), ls_suffix.bytes.data(), this->suffix_bytes_count_);
 
-        // 2. Determine offset where prefix bytes begin (MSB side)
+        // 2. Determine offset where prefix bytes begin in full_hash
         const size_t prefix_start_idx = HashBytesCount - this->prefix_bytes_count_;
 
         if (this->prefix_bits_count_ % 8 == 0) {
-            // Clean alignment: Prefix bytes copy directly to top bytes without byte overlap
+            // Clean alignment: All prefix bytes copy directly into the top bytes
             std::memcpy(full_hash.bytes.data() + prefix_start_idx, ms_prefix.bytes.data(), this->prefix_bytes_count_);
         } else {
-            // Overlapping byte case:
-            // High bytes of prefix copy directly
+            // Overlapping byte case (Little-Endian):
+            // ms_prefix.bytes[0] is the LSB overlap byte.
+            // ms_prefix.bytes[1 ... N-1] are higher bytes copying to prefix_start_idx + 1 upwards.
             if (this->prefix_bytes_count_ > 1) {
                 std::memcpy(full_hash.bytes.data() + prefix_start_idx + 1,
                             ms_prefix.bytes.data() + 1,
                             this->prefix_bytes_count_ - 1);
             }
 
-            // The overlap byte combines suffix MSBs and prefix LSBs via bitwise OR
+            // Redundant assertion: byte 0 of Little-Endian prefix must match full_hash overlap byte
+            if (full_hash.bytes[prefix_start_idx] != ms_prefix.bytes[0]) {
+                MISHAP_ASSERT(false, "Hash Prefix/Suffix overlapping byte does not match");
+                throw DatabaseCorruptException("Hash Prefix/Suffix overlapping byte does not match");
+            }
+        }
+
+        return full_hash;
+    }
+
+    /// Reconstructs the original full HashBytes<HashBytesCount> from masked prefix and suffix bytes.
+    /// Perfectly handles overlapping byte when prefix_bits_count is not a multiple of 8.
+    HashBytes<HashBytesCount> hash_from_prefix_suffix_masked(
+     MsPrefixBytesMasked ms_prefix,
+     LsSuffixBytesMasked ls_suffix) const
+    {
+        HashBytes<HashBytesCount> full_hash{};
+
+        // 1. Copy suffix bytes starting at LSB (byte offset 0)
+        std::memcpy(full_hash.bytes.data(), ls_suffix.bytes.data(), this->suffix_bytes_count_);
+
+        // 2. Determine offset where prefix bytes begin in full_hash
+        const size_t prefix_start_idx = HashBytesCount - this->prefix_bytes_count_;
+
+        if (this->prefix_bits_count_ % 8 == 0) {
+            // Clean alignment: Copy prefix bytes directly
+            std::memcpy(full_hash.bytes.data() + prefix_start_idx, ms_prefix.bytes.data(), this->prefix_bytes_count_);
+        } else {
+            // Overlapping byte case (Little-Endian):
+            // Copy higher prefix bytes (indices 1 to N-1) to destination offset (prefix_start_idx + 1)
+            if (this->prefix_bytes_count_ > 1) {
+                std::memcpy(full_hash.bytes.data() + prefix_start_idx + 1,
+                            ms_prefix.bytes.data() + 1,
+                            this->prefix_bytes_count_ - 1);
+            }
+
+            // Combine masked LSB of Little-Endian prefix (ms_prefix.bytes[0]) with MSB of suffix via OR
             full_hash.bytes[prefix_start_idx] |= ms_prefix.bytes[0];
         }
 

@@ -20,6 +20,11 @@ public:
 
     LookupableBufferRoom() = default;
 
+    using OnFullCallback = std::function<void()>;
+    void set_on_full_callback(OnFullCallback on_full_cb) {
+        buffer_.set_on_full_callback(std::move(on_full_cb));
+    }
+
     // Direct delegate to underlying library buffer initialization/feeding
     void InitializeAdd(DonutType donut) {
         buffer_.InitializeAdd(std::move(donut));
@@ -104,6 +109,7 @@ public:
     }
 
 private:
+    int tier_index_;
     GenericBuffer buffer_;
 };
 

@@ -65,7 +65,8 @@ TEST(BufferRoomTest, ProducerConsumerHandshake) {
 
     // Consumer thread starts first and immediately blocks waiting for Capacity items
     std::jthread consumer_thread([&]() {
-        const bool result = room.with_contents_when_filled([&](const std::span<const MockMoveOnlyTypeState, Capacity> items) {
+        const bool result = room.with_contents_when_filled(
+                std::stop_token{}, [&](const std::span<const MockMoveOnlyTypeState, Capacity> items) {
             items_seen_count = static_cast<int>(items.size());
             for (std::size_t i = 0; i < items.size(); ++i) {
                 EXPECT_EQ(items[i].id, static_cast<int>(i + 1));
@@ -199,7 +200,7 @@ TEST(BufferRoomTest, ReaderFallbackWhenDiscarding) {
     std::atomic<bool> with_contents_result{true};
 
     std::jthread reader_thread([&]() {
-        bool res = room.with_contents_when_filled([&](auto /*items*/) {
+        bool res = room.with_contents_when_filled(std::stop_token{}, [&](auto /*items*/) {
             FAIL() << "Lambda should NOT execute during fallback/discard";
         });
         with_contents_result = res;

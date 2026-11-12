@@ -65,6 +65,27 @@ struct MsPrefixBytesMasked {
     [[nodiscard]] constexpr auto end() const { return bytes.end(); }
     [[nodiscard]] constexpr auto size() const { return bytes.size(); }
     constexpr auto operator[](const size_t idx) const { return bytes[idx]; }
+
+    /// Extracts the prefix bits as a right-aligned uint64_t (assumes Little-Endian byte order).
+    /// We are surprised to need this fn... its call seemed to come out of nowhere?
+    [[nodiscard]] uint64_t to_uint64(const size_t prefix_bits_count) const {
+        MISHAP_ASSERT(prefix_bits_count <= 64, "Prefix exceeds 64 bits");
+        MISHAP_ASSERT(bytes.size() * 8 >= prefix_bits_count, "Buffer too small for prefix_bits_count");
+
+        if (prefix_bits_count == 0 || bytes.empty()) {
+            return 0;
+        }
+
+        // 1. Pack Little-Endian bytes into a uint64_t (bytes[0] is LSB)
+        uint64_t raw = 0;
+        for (size_t i = 0; i < bytes.size(); ++i) {
+            raw |= static_cast<uint64_t>(bytes[i]) << (i * 8);
+        }
+
+        // 2. Shift down by the unused padding bits at the bottom of bytes[0]
+        const size_t unused_low_bits = (bytes.size() * 8) - prefix_bits_count;
+        return raw >> unused_low_bits;
+    }
 };
 struct LsSuffixBytesMasked {
     std::vector<std::uint8_t> bytes;

@@ -7,6 +7,14 @@ add_executable(wedding_cake
         include/concepts_lookup.hpp
         include/lookupable_buffer_room.hpp
         include/mishap_assert.hpp
+        include/tier_n_st00_baking_donut.hpp
+        include/tier_n_folder.hpp
+        include/tier_n_transition_proxy.hpp
+        include/tier_n_transition_worker.hpp
+        include/tier_n_transition_lookup.hpp
+        include/tier_n_hydrator.hpp
+        include/exceptions.hpp
+        include/bake.hpp
 )
 
 # Statically link the C++ standard library so the user doesn't need to install it
