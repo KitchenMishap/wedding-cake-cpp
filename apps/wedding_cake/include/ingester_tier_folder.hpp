@@ -19,6 +19,11 @@ public:
 
     IngesterTierFolder() = delete;
 
+    template<typename Func>
+    void set_on_full_callback(Func&& cb) {
+        buffer_room_.set_on_full_callback(std::forward<Func>(cb));
+    }
+
     // Non-const accessor (for mutating operations like append_hashes)
     [[nodiscard]] auto& hatchling() noexcept { return hatchling_; }
     // Const accessor (for read-only operations like remaining_capacity queries)
@@ -83,6 +88,8 @@ template<size_t HashBytesCount>
 inline void IngesterTierFolder<HashBytesCount>::hydrate_buffer_room(
     const std::filesystem::path& tier_path, const std::vector<uint64_t>& sorted_offsets_found) {
     // sorted_offsets_found should as a maximum contain IngestorFanout+1 entries (the +1 is for the hatchling)
+    MISHAP_ASSERT(sorted_offsets_found.size() <= tier_fanout + 1,
+        "create_or_hydrate_buffer_room(): Too many object folders found in tier");
     if (sorted_offsets_found.size() > tier_fanout + 1) {
         throw std::runtime_error("create_or_hydrate_buffer_room(): Too many object folders found in tier");
     }

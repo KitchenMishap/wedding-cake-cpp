@@ -173,6 +173,24 @@ public:
         return bytes_needed;
     }
 
+    static constexpr uint8_t calculate_bytes_per_suffix_index(const size_t suffix_indices_count) {
+        // Some bytes are needed to represent each suffix index.
+        // Suffix index can be 0 to suffix_indices_count - 1. There is not an "all ones" sentinel value to represent.
+        // We therefore need to count the bytes needed to represent numbers 0 to suffix_indices_count -1.
+        // Therefore, the maximum value to store is suffix_indices_count - 1.
+        // Note that a suffix_indices_count == 0 IS VALID
+
+        // std::bit_width returns the number of bits required to store 'suffix_indices_count - 1'
+        const unsigned int bits_needed = std::bit_width(suffix_indices_count - 1);
+
+        // Convert total bits needed into whole byte count (1..8 bytes)
+        const uint8_t bytes_needed = static_cast<uint8_t>((bits_needed + 7) / 8);
+
+        assert(bytes_needed <= 8 && "LocalPi cannot exceed 64-bit / 8-byte representation");
+        return bytes_needed;
+    }
+
+
 protected:
     size_t prefix_bits_count_;
     size_t suffix_bits_count_;

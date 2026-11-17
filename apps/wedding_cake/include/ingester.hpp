@@ -44,6 +44,8 @@ public:
     Ingester(Ingester&&) = delete;
     Ingester& operator=(Ingester&&) = delete;
 
+    IngesterTierFolder<HashBytesCount>& tier_folder() { return ingester_tier_folder_; }
+
     // Client interface
     // This can block (which is fine)
     void feed(uint64_t block_height, std::vector<std::optional<HashBytes<HashBytesCount>>> hashes) {

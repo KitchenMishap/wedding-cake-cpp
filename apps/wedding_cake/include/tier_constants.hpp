@@ -4,6 +4,8 @@
 
 // ToDo Put these constants in UPPER_SNAKE_CASE
 
+namespace wedding_cake {
+
 // How many hashes can a tier 0 donut hold?
 constexpr std::size_t ingester_donut_capacity = 65535;
 // How many tier N donuts make a tier N+1 donut?
@@ -40,4 +42,14 @@ constexpr std::size_t pi_bytes_count_for_tier(auto n) noexcept {
 // How many bits in the hash ms_prefix used for tier n?
 constexpr std::size_t ms_prefix_bits_for_tier(auto n) noexcept {
     return n * tier_fanout;
+}
+
+constexpr GlobalPi first_offset_of_tier(auto n) noexcept {
+    auto result = ingester_donut_capacity;
+    for (size_t i = 0; i < n; ++i) {
+        result *= tier_fanout;
+    }
+    return GlobalPi(result);
+}
+
 }

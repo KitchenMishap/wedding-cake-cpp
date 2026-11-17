@@ -91,6 +91,8 @@ TierNFolder<HashBytesCount>::TierNFolder(
         tier_n_donut_capacity(tier_index_),
         ms_prefix_bits_for_tier(tier_index)))
 {
+    // Tier 0 uses an IngesterTierFolder instead of a TierNFolder:
+    MISHAP_ASSERT( tier_index > 0 , "TierNFolder ctor(): tier_index should be > 0" );
 }
 
 // Ctor for hydration from disk
@@ -103,6 +105,8 @@ TierNFolder<HashBytesCount>::TierNFolder(
     , hatchling_(hydrate_hatchling(tier_index_, tier_path_, sorted_offsets_found_at_startup_))
     , buffer_room_()
 {
+    // Tier 0 uses an IngesterTierFolder instead of a TierNFolder:
+    MISHAP_ASSERT( tier_index > 0 , "TierNFolder ctor(): tier_index should be > 0" );
     hydrate_buffer_room(tier_path_, sorted_offsets_found_at_startup_);
 }
 
@@ -110,6 +114,8 @@ template<size_t HashBytesCount>
 std::filesystem::path TierNFolder<HashBytesCount>::make_folder_if_not_exist(
     const std::filesystem::path& base_path, const size_t tier_index)
 {
+    // Tier 0 uses an IngesterTierFolder instead of a TierNFolder:
+    MISHAP_ASSERT( tier_index > 0 , "make_folder_if_not_exist(): tier_index should be > 0" );
     auto path = base_path / (FOLDER_PREFIX + std::to_string(tier_index));
     std::filesystem::create_directories(path);
     return path;
@@ -160,6 +166,8 @@ void TierNFolder<HashBytesCount>::hydrate_buffer_room(
 template<size_t HashBytesCount>
 std::unique_ptr<TierNFolder<HashBytesCount>> hydrate_tier_if_exists(
         std::filesystem::path base_path, size_t tier_index) {
+    // Tier 0 uses an IngesterTierFolder instead of a TierNFolder:
+    MISHAP_ASSERT( tier_index > 0 , "hydrate_tier_if_exists(): tier_index should be > 0" );
     auto tier_folder_path = base_path / (TierNFolder<HashBytesCount>::FOLDER_PREFIX + std::to_string(tier_index));
     if (!std::filesystem::exists(tier_folder_path)) {
         return nullptr;

@@ -140,9 +140,7 @@ public:
 
         lock.unlock();
         for (const auto& item : to_purge) {
-            if constexpr (requires(const T& obj) { obj.purge_from_disk(); }) {
-                item.purge_from_disk();
-            }
+            item.purge_from_disk();
         }
     }
 

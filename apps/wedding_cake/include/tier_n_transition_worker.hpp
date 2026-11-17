@@ -12,10 +12,10 @@
 namespace wedding_cake {
 
 /// Thread Client (B): Background worker thread managing Stage 1 & 2 baking
-template<size_t HashBytesCount>
+template<typename InputTierFolderType, size_t HashBytesCount>
 class TierNTransitionWorker {
 public:
-    TierNTransitionWorker(TierNTransitionProxy<HashBytesCount>& proxy,
+    TierNTransitionWorker(TierNTransitionProxy<InputTierFolderType, HashBytesCount>* proxy,
                           size_t source_prefix_bits_count,
                           size_t delta_prefix_bits_count,
                           size_t source_entries_per_donut);
@@ -32,7 +32,7 @@ public:
     void request_stop();
 
 private:
-    TierNTransitionProxy<HashBytesCount>& proxy_;
+    TierNTransitionProxy<InputTierFolderType, HashBytesCount>* proxy_;
 
     size_t source_prefix_bits_count_;
     size_t delta_prefix_bits_count_;
@@ -50,9 +50,9 @@ private:
                                     std::stop_token stop_token);
 };
 
-template<size_t HashBytesCount>
-TierNTransitionWorker<HashBytesCount>::TierNTransitionWorker(
-        TierNTransitionProxy<HashBytesCount>& proxy,
+template<typename InputTierFolderType, size_t HashBytesCount>
+TierNTransitionWorker<InputTierFolderType, HashBytesCount>::TierNTransitionWorker(
+        TierNTransitionProxy<InputTierFolderType, HashBytesCount>* proxy,
         const size_t source_prefix_bits_count,
         const size_t delta_prefix_bits_count,
         const size_t source_entries_per_donut)
@@ -61,33 +61,33 @@ TierNTransitionWorker<HashBytesCount>::TierNTransitionWorker(
     , delta_prefix_bits_count_(delta_prefix_bits_count)
     , source_entries_per_donut_(source_entries_per_donut) {}
 
-template<size_t HashBytesCount>
-void TierNTransitionWorker<HashBytesCount>::start() {
+template<typename InputTierFolderType, size_t HashBytesCount>
+void TierNTransitionWorker<InputTierFolderType, HashBytesCount>::start() {
     worker_thread_ = std::jthread([this](std::stop_token stop_token) {
         this->worker_loop(std::move(stop_token));
     });
 }
 
-template<size_t HashBytesCount>
-void TierNTransitionWorker<HashBytesCount>::request_stop() {
+template<typename InputTierFolderType, size_t HashBytesCount>
+void TierNTransitionWorker<InputTierFolderType, HashBytesCount>::request_stop() {
     worker_thread_.request_stop();
 }
 
-template<size_t HashBytesCount>
-TierNTransitionWorker<HashBytesCount>::~TierNTransitionWorker() {
+template<typename InputTierFolderType, size_t HashBytesCount>
+TierNTransitionWorker<InputTierFolderType, HashBytesCount>::~TierNTransitionWorker() {
     if (worker_thread_.joinable()) {
         worker_thread_.request_stop(); // Wakes cv_consumer_.wait(..., stop_token, ...) immediately!
         worker_thread_.join();         // Set your debugger breakpoint here
     }
 }
 
-template <size_t HashBytesCount>
-void TierNTransitionWorker<HashBytesCount>::worker_loop(std::stop_token stop_token) {
+template <typename InputTierFolderType, size_t HashBytesCount>
+void TierNTransitionWorker<InputTierFolderType, HashBytesCount>::worker_loop(std::stop_token stop_token) {
     while (!stop_token.stop_requested()) {
         bool ready_to_discard = false;
 
         // 1. Acquire read access to the filled upper-tier buffer room
-        const bool upper_room_valid = proxy_.upper_tier_buffer_room_with_contents_when_filled(
+        const bool upper_room_valid = proxy_->upper_tier_buffer_room_with_contents_when_filled(
             stop_token,
             [&](auto items) -> void {
 
@@ -101,7 +101,7 @@ void TierNTransitionWorker<HashBytesCount>::worker_loop(std::stop_token stop_tok
                 bool evolutionary_destiny_reached = false;
 
                 // 2. Acquire exclusive write access to the lower-tier hatchling
-                const bool hatchling_valid = proxy_.with_lower_tier_hatchling_for_write(
+                const bool hatchling_valid = proxy_->with_lower_tier_hatchling_for_write(
                     [&](TierNEvolver<HashBytesCount>& destination) -> void {
                         // Here we are evolving the hatchling.
                         // There are several Typestates along this long process of evolution.
@@ -156,7 +156,7 @@ void TierNTransitionWorker<HashBytesCount>::worker_loop(std::stop_token stop_tok
 
         // ReaderScope has now exited (active_readers_ decremented) - safe to Discard!
         if (ready_to_discard) {
-            proxy_.upper_tier_buffer_room_discard();
+            proxy_->upper_tier_buffer_room_discard();
         }
     }
     // Thread terminates cleanly on stop request or buffer discard

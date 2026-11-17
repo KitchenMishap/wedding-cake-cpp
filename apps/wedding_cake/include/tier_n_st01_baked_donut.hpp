@@ -29,12 +29,17 @@ public:
     const auto& prior_st00() const {return prior_ST00_;}
     [[nodiscard]] const std::filesystem::path& st01_path() const noexcept { return st01_path_; }
 
+    void purge_from_disk() const;
+
 private:
     Tier_N_ST00_BakingDonut<HashBytesCount> prior_ST00_;
     std::filesystem::path st01_path_;
+    bool hydration_required_;
     files_manifest::FilesManifestDummy st01_manifest_;
 
     void hydrate_self_for_evolution() {}    // Nothing needs doing, this state evolves directly from disk
+
+    static bool create_folder_if_needed(const std::filesystem::path& path);
 };
 
 template<size_t HashBytesCount>
@@ -42,15 +47,28 @@ inline Tier_N_ST01_BakedDonut<HashBytesCount>::Tier_N_ST01_BakedDonut(
         Tier_N_ST00_BakingDonut<HashBytesCount>&& prior_state)
     : prior_ST00_(std::move(prior_state))
     , st01_path_(prior_ST00_.object_path() / ST01)
+    , hydration_required_(create_folder_if_needed(st01_path_))
     , st01_manifest_(st01_path_)
 {
-    if (!std::filesystem::exists(st01_path_)) {
-        // Evolving for the first time: create ST01 directory
-        create_directories(st01_path_);
-    } else {
+    if (hydration_required_) {
         // Rehydrating existing ST01 state from disk
         hydrate_self_for_evolution();
     }
+}
+
+template<size_t HashBytesCount>
+void Tier_N_ST01_BakedDonut<HashBytesCount>::purge_from_disk() const {
+    std::filesystem::remove_all(prior_st00().object_path());
+}
+
+template<size_t HashBytesCount>
+bool Tier_N_ST01_BakedDonut<HashBytesCount>::create_folder_if_needed(const std::filesystem::path& path) {
+    if (!std::filesystem::exists(path)) {
+        // Create new
+        std::filesystem::create_directories(path);
+        return true;
+    }
+    return false;
 }
 
 }

@@ -261,7 +261,7 @@ bool bake_donut(
         manifest.close_file(offsets_fh);
 
         // Determine bytes needed for suffix index (1..8)
-        const uint8_t bytes_per_suffix_idx = DonutEntriesWriteCalculator<HashBytesCount>::calculate_bytes_per_local_pi(
+        const uint8_t bytes_per_suffix_idx = DonutEntriesWriteCalculator<HashBytesCount>::calculate_bytes_per_suffix_index(
             static_cast<size_t>(total_valid_suffixes));
 
         suffix_width_fh = manifest.create_new_file(SUFFIX_INDEX_BYTES_FILE);

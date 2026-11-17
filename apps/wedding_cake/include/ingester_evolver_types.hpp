@@ -318,6 +318,8 @@ public:
     [[nodiscard]] std::optional<HashBytes<HashBytesCount>> forward_lookup(GlobalPi global_pi) const;
     [[nodiscard]] GlobalPi reverse_lookup(HashBytes<HashBytesCount> hash) const;
 
+    void purge_from_disk() const;
+
 private:
     Ingester_ST00_RemainderDonut<HashBytesCount> prior_ST00_;
     std::filesystem::path st01_path_;
@@ -349,6 +351,11 @@ std::optional<HashBytes<HashBytesCount>> Ingester_ST01_FilledDonut<HashBytesCoun
 template<size_t HashBytesCount>
 GlobalPi Ingester_ST01_FilledDonut<HashBytesCount>::reverse_lookup(HashBytes<HashBytesCount> hash) const {
     return prior_ST00_.reverse_lookup(hash);
+}
+
+template<size_t HashBytesCount>
+void Ingester_ST01_FilledDonut<HashBytesCount>::purge_from_disk() const {
+    std::filesystem::remove_all(prior_st00().object_path());
 }
 
 }
